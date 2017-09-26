@@ -129,10 +129,6 @@ export default class WSConnection {
   }
 
   public send(op: number, d: Object) {
-    console.log(`SENDING: ----------`);
-    console.log(op, d);
-    console.log();
-
     return this._ws.send(this.encode({ op, d }));
   }
 
