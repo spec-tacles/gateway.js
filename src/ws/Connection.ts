@@ -82,7 +82,7 @@ export default class WSConnection {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
     return this.send(op.IDENTFY, {
-      token: process.env.discord,
+      token: this.client.options.token,
       properties: {
         $os: os.platform(),
         $browser: 'spectacles',
