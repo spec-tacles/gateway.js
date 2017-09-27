@@ -41,4 +41,9 @@ export default class Client extends EventEmitter {
       conn.connect();
     }
   }
+
+  async login() {
+    await this.fetchGateway();
+    this.spawn();
+  }
 };
