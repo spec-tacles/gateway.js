@@ -3,6 +3,8 @@ import { RedisClient, Multi } from 'redis';
 import tsubaki = require('tsubaki');
 import Client from '../core/Client';
 
+import * as structures from '../types/structures';
+
 tsubaki.promisifyAll(RedisClient.prototype);
 tsubaki.promisifyAll(Multi.prototype);
 
@@ -12,28 +14,6 @@ export default class Redis extends (<{ new(): any }> RedisClient) {
   constructor(c: Client) {
     super();
     this.c = c;
-
-    c.on('READY', async d => {
-      await this.insertUser(d.user);
-      await Promise.all(d.guilds.map((g: any) => this.insertGuild(g)));
-      await Promise.all(d.private_channels.map((c: any) => this.insertChannel(c)));
-      await this.publishAsync('ready', d.user.id);
-    });
-
-    c.on('GUILD_CREATE', async d => {
-      await this.insertGuild(d);
-      await this.publishAsync('guildCreate', d.id);
-    });
-
-    c.on('PRESENCE_UPDATE', async d => {
-      await this.insertUser(d.user);
-      await this.insertGame(d.user.id, d.guild_id, d.game);
-      await this.insertGame(d.user.id, d.guild_id, d.status);
-    });
-
-    c.on('GUILD_MEMBER_UPDATE', async d => {
-      await this.insertUser(d.user);
-    });
   }
 
   public async insertUser(user: any): Promise<void> {

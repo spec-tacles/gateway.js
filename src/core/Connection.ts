@@ -2,10 +2,11 @@ import WebSocket = require('ws');
 import os = require('os');
 import { Buffer } from 'buffer';
 
-import Client from '../core/Client';
+import Client from './Client';
+import Dispatcher from './Dispatcher';
 
 import { Error, codes } from '../util/errors';
-import { op } from '../util/constants';
+import { op, dispatch } from '../util/constants';
 
 let erlpack: { pack: (d: Object) => Buffer, unpack: (d: Buffer | Uint8Array) => Object } | void;
 try {
@@ -16,6 +17,7 @@ try {
 
 export default class WSConnection {
   public readonly client: Client;
+  public readonly dispatcher: Dispatcher;
   public readonly shard: number;
 
   public encoding: 'json' | 'etf' = 'etf';
@@ -29,6 +31,7 @@ export default class WSConnection {
   constructor(client: Client, shard: number = 0) {
     this.client = client;
     this.shard = shard;
+    this.dispatcher = new Dispatcher(this);
   }
 
   public get seq(): number {
@@ -101,8 +104,8 @@ export default class WSConnection {
     switch (decoded.op) {
       case op.DISPATCH:
         this._seq = decoded.s;
-        if (decoded.op.t === 'READY') this._session = decoded.op.d.session_id;
-        this.client.emit(decoded.t, decoded.d);
+        if (decoded.t === dispatch.READY) this._session = decoded.d.session_id;
+        this.dispatcher.dispatch(decoded.t, decoded.d);
         break;
       case op.HEARTBEAT:
         this.heartbeat();

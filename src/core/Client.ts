@@ -1,7 +1,6 @@
-import EventEmitter = require('events');
 import { AxiosInstance } from 'axios';
 
-import Connection from '../ws/Connection';
+import Connection from './Connection';
 import Redis from '../redis';
 
 import { Error, codes } from '../util/errors';
@@ -12,7 +11,7 @@ export interface Options {
   token: string;
 };
 
-export default class Client extends EventEmitter {
+export default class Client {
   public readonly options: Options;
   public readonly redis: Redis;
   public readonly request: AxiosInstance;
@@ -21,7 +20,6 @@ export default class Client extends EventEmitter {
   public gateway: Gateway = null;
 
   constructor(options: Options) {
-    super();
     this.options = options;
     this.redis = new Redis(this);
     this.request = request(options.token);
