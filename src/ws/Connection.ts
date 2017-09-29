@@ -31,19 +31,19 @@ export default class WSConnection {
     this.shard = shard;
   }
 
-  public get seq() {
+  public get seq(): number {
     return this._seq;
   }
 
-  public get session() {
+  public get session(): string|null {
     return this._session;
   }
 
-  public get ws() {
+  public get ws(): WebSocket {
     return this._ws;
   }
 
-  public connect() {
+  public connect(): void {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${this.encoding}`);
@@ -52,19 +52,19 @@ export default class WSConnection {
     this._ws.on('error', console.error);
   }
 
-  public disconnect() {
+  public disconnect(): void {
     if (this._ws.readyState !== WebSocket.CLOSED && this._ws.readyState !== WebSocket.CLOSING) this._ws.close();
     this._ws.removeListener('message', this.receive);
     this._ws.removeListener('close', this.close);
     this._ws.removeListener('error', console.error);
   }
 
-  public reconnect() {
+  public reconnect(): void {
     this.disconnect();
     this.connect();
   }
 
-  public resume() {
+  public resume(): void {
     if (!this.session) throw new Error(codes.NO_SESSION);
 
     return this.send(op.RESUME, {
@@ -74,11 +74,11 @@ export default class WSConnection {
     });
   }
 
-  public heartbeat() {
+  public heartbeat(): void {
     return this.send(op.HEARTBEAT, this.seq);
   }
 
-  public identify() {
+  public identify(): void {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
     return this.send(op.IDENTFY, {
@@ -95,7 +95,7 @@ export default class WSConnection {
     });
   }
 
-  public receive(data: WebSocket.Data) {
+  public receive(data: WebSocket.Data): void {
     const decoded = this.decode(data);
 
     switch (decoded.op) {
@@ -128,11 +128,11 @@ export default class WSConnection {
     }
   }
 
-  public send(op: number, d: Object) {
+  public send(op: number, d: Object): void {
     return this._ws.send(this.encode({ op, d }));
   }
 
-  public close(code: number, reason: string) {
+  public close(code: number, reason: string): void {
     switch (code) {
       case 4007: // invalid sequence (clear session and reconnect)
       case 4009: // session timed out (clear session and reconnect)
@@ -145,7 +145,7 @@ export default class WSConnection {
     }
   }
 
-  public decode(data: WebSocket.Data) {
+  public decode(data: WebSocket.Data): any {
     if (data instanceof ArrayBuffer) throw new Error(codes.ARRAYBUFFER_RECEIVED);
     if (Array.isArray(data)) data = data.join();
 
@@ -162,7 +162,7 @@ export default class WSConnection {
     }
   }
 
-  public encode(data: Object) {
+  public encode(data: Object): any {
     switch (this.encoding) {
       case 'json':
         return JSON.stringify(data);
