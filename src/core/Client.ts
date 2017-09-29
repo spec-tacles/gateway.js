@@ -31,7 +31,7 @@ export default class Client extends EventEmitter {
     return this.gateway = (await this.request.get('/gateway/bot')).data;
   }
 
-  spawn() {
+  spawn(): void {
     if (!this.gateway) throw new Error(codes.NO_GATEWAY);
 
     this.connections.splice(0, this.connections.length);
