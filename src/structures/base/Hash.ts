@@ -10,8 +10,6 @@ export interface BasicObject {
 export default abstract class Hash<T extends { [key: string]: Basic }> extends Base<T> {
   public readonly key: string;
 
-  private _flat: Flat;
-
   constructor(client: Client, key: string, d: T) {
     super(client, d);
     this.key = key;
