@@ -1,5 +1,13 @@
 import Client from './core/Client';
+import Connection from './core/Connection';
+import Dispatcher from './core/Dispatcher';
+import Events from './core/Events';
 
-if (typeof process.env.token !== 'string') throw new Error('no token');
-const client = new Client({ token: process.env.token || '' });
-client.login();
+export default Client;
+
+export {
+  Client,
+  Connection,
+  Dispatcher,
+  Events,
+};
