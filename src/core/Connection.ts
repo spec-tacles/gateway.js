@@ -32,6 +32,9 @@ export default class WSConnection {
     this.client = client;
     this.shard = shard;
     this.dispatcher = new Dispatcher(this);
+
+    this.receive = this.receive.bind(this);
+    this.close = this.close.bind(this);
   }
 
   public get seq(): number {

@@ -11,7 +11,6 @@ export default abstract class Hash<T extends { [key: string]: Basic }> extends B
   public readonly key: string;
 
   private _flat: Flat;
-  private _complex: Complex = {};
 
   constructor(client: Client, key: string, d: T) {
     super(client, d);
@@ -19,30 +18,26 @@ export default abstract class Hash<T extends { [key: string]: Basic }> extends B
   }
 
   public async save() {
-    for (const v of Object.values(this._complex)) {
+    const promises = [];
+
+    for (const v of Object.values(this.complex())) {
       if (!v) continue;
-      if (Array.isArray(v)) await Promise.all(v.map(s => s.save()));
-      else await v.save();
+      if (Array.isArray(v)) promises.push(...v.map(s => s.save()));
+      else promises.push(v.save());
     }
 
-    await this.redis.hmsetAsync(this.key, this.raw);
-  }
+    for (const v of this.extra()) if (v) promises.push(v.save());
 
-  public patch(d: T) {
-    super.patch(d);
-    this._flat = this.flatten();
-    this._complex = this.complex();
-
-    for (const [k, v] of Object.entries(this._complex)) {
-      if (v && k in d) {
-        if (Array.isArray(v)) for (const s of v) s.patch(d[k]);
-        else v.patch(d[k]);
-      }
-    }
+    await Promise.all(promises);
+    await this.redis.hmsetAsync(this.key, this.flatten());
   }
 
   public flatten(): Flat {
     return Base.flatten(this.raw);
+  }
+
+  public extra(): Array<Base<any> | null> {
+    return [];
   }
 
   public abstract complex(): Complex;
