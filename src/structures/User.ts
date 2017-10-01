@@ -1,30 +1,14 @@
 import Client from '../core/Client';
-import Base from './base';
+import Hash from './base/Hash';
 
-export type RawUser = {
-  id: string,
-  username: string,
-  discriminator: string,
-  avatar: string,
-  bot?: boolean,
-  mfa_enabled?: boolean,
-  verified?: boolean,
-  email?: string,
-}
+import { USER } from '../types/structures';
 
-export default class User extends Base<RawUser> {
-  public raw: RawUser;
+export default class User extends Hash<USER> {
+  constructor(client: Client, data: USER) {
+    super(client, `user.${data.id}`, data);
+  }
 
-  public id: string;
-  public username: string;
-  public discriminator: string;
-  public avatar: string;
-  public bot?: boolean;
-  public mfa_enabled?: boolean;
-  public verified?: boolean;
-  public email?: string;
-
-  public get key(): string {
-    return `user.${this.id}`;
+  public complex() {
+    return {};
   }
 }

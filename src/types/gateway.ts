@@ -9,6 +9,12 @@ export type READY = {
   _trace: string[],
 };
 
+export type CHANNEL_CREATE = structures.CHANNEL;
+export type CHANNEL_DELETE = structures.CHANNEL;
+export type CHANNEL_PINS_UPDATE = {
+  channel_id: string,
+  last_pin_timestamp: string,
+};
 export type CHANNEL_UPDATE = structures.CHANNEL;
 
 export type GUILD_CREATE = structures.AVAILABLE_GUILD;

@@ -1,9 +1,17 @@
 import Client from '../../core/Client';
 import Redis from '../../redis';
 
+export interface Flat {
+  [key: string]: string | boolean | number | undefined,
+}
+
+export interface Complex {
+  [key: string]: Base<any> | Base<any>[] | null
+}
+
 export default abstract class Base<T> {
-  public static flatten(obj: any) {
-    const out: any = {};
+  public static flatten(obj: any): Flat {
+    const out: Flat = {};
     for (const k of Object.keys(obj)) {
       const type = typeof obj[k];
       if (type !== 'object' && type !== 'function') out[k] = obj[k];
@@ -16,7 +24,7 @@ export default abstract class Base<T> {
 
   constructor(client: Client, data: T) {
     this.client = client;
-    this._patch(data);
+    this.patch(data);
   }
 
   protected get redis(): Redis {
@@ -31,7 +39,7 @@ export default abstract class Base<T> {
     await this.redis.publishAsync(event, this.key);
   }
 
-  protected _patch(data: T): void {
+  public patch(data: T): void {
     this.raw = data;
   }
 

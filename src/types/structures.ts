@@ -29,7 +29,7 @@ export type CHANNEL = {
   type: ChannelTypes,
   guild_id?: string,
   position?: number,
-  permission_overwrites: any[],
+  permission_overwrites: OVERWRITE[],
   name?: string,
   topic?: string,
   last_message_id?: string,

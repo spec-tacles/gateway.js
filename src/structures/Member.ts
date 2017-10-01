@@ -1,30 +1,21 @@
-import Client from '../core/Client';
-import Base from './base';
+import Hash from './base/Hash';
 
 import Guild from './Guild';
-import User, { RawUser } from './User';
+import User from './User';
 
-export type RawMember = {
-  user: RawUser,
-  nick: string,
-  roles: string[],
-  joined_at: string,
-  deaf: boolean,
-  mute: boolean,
-};
+import { MEMBER } from '../types/structures';
 
-export default class Member extends Base<RawMember> {
+export default class Member extends Hash<MEMBER> {
   public readonly guild: Guild;
-  public readonly user: User;
 
-  constructor(client: Client, guild: Guild, data: RawMember) {
-    super(client, data);
-
+  constructor(guild: Guild, data: MEMBER) {
+    super(guild.client, `user.${data.user.id}.guild.${guild.raw.id}`, data);
     this.guild = guild;
-    this.user = new User(client, data.user);
   }
 
-  public get key(): string {
-    return `user.${this.user.id}.guild.${this.guild.id}`;
+  public complex() {
+    return {
+      user: new User(this.client, this.raw.user),
+    };
   }
 }
