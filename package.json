@@ -8,6 +8,10 @@
     "start": "node --trace-warnings test/index.js",
     "dev": "gulp && env-cmd ../.env npm start"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spec-tacles/gateway.git"
+  },
   "author": "Will Nelson <nelson.will@live.com>",
   "license": "MIT",
   "dependencies": {
