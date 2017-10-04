@@ -152,7 +152,7 @@ export default class WSConnection {
   }
 
   public decode(data: WebSocket.Data): any {
-    if (data instanceof ArrayBuffer) throw new Error(codes.ARRAYBUFFER_RECEIVED);
+    if (data instanceof ArrayBuffer) data = Buffer.from(data);
     if (Array.isArray(data)) data = data.join();
 
     switch (this.encoding) {
