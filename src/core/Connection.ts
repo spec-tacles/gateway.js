@@ -1,6 +1,7 @@
 import WebSocket = require('ws');
 import os = require('os');
 import { Buffer } from 'buffer';
+import throttle = require('p-throttle');
 
 import Client from './Client';
 import Dispatcher from './Dispatcher';
@@ -35,6 +36,8 @@ export default class WSConnection {
 
     this.receive = this.receive.bind(this);
     this.close = this.close.bind(this);
+
+    this.send = throttle(this.send.bind(this), 120, 60);
   }
 
   public get seq(): number {
