@@ -20,7 +20,7 @@ export default class WSConnection {
   public readonly shard: number;
 
   public readonly encoding: 'json' | 'etf' = typeof erlpack === 'undefined' ? 'json' : 'etf';
-  public version: number = 6;
+  public readonly version: number = 6;
 
   private _ws: WebSocket;
   private _seq: number = -1;
