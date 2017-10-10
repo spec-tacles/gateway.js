@@ -19,7 +19,7 @@ export default class WSConnection {
   public readonly client: Client;
   public readonly shard: number;
 
-  public encoding: 'json' | 'etf' = 'etf';
+  public readonly encoding: 'json' | 'etf' = 'etf';
   public version: number = 6;
 
   private _ws: WebSocket;
