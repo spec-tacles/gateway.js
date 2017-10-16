@@ -15,6 +15,23 @@ try {
   // do nothing
 }
 
+const identify = throttle(function (this: WSConnection) {
+  if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
+
+  this.send(op.IDENTFY, {
+    token: this.client.options.token,
+    properties: {
+      $os: os.platform(),
+      $browser: 'spectacles',
+      $device: 'spectacles',
+    },
+    compress: false,
+    large_threshold: 250,
+    shard: [this.shard, this.client.gateway.shards],
+    presence: {},
+  });
+}, 1, 5000);
+
 export default class WSConnection {
   public readonly client: Client;
   public readonly shard: number;
@@ -35,6 +52,7 @@ export default class WSConnection {
     this.close = this.close.bind(this);
 
     this.send = throttle(this.send.bind(this), 120, 60);
+    this.identify = identify;
   }
 
   public get seq(): number {
@@ -84,22 +102,8 @@ export default class WSConnection {
     return this.send(op.HEARTBEAT, this.seq);
   }
 
-  public identify(): void {
-    if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
-
-    return this.send(op.IDENTFY, {
-      token: this.client.options.token,
-      properties: {
-        $os: os.platform(),
-        $browser: 'spectacles',
-        $device: 'spectacles',
-      },
-      compress: false,
-      large_threshold: 250,
-      shard: [this.shard, this.client.gateway.shards],
-      presence: {},
-    });
-  }
+  // see throttled method above
+  public identify(): void {}
 
   public receive(data: WebSocket.Data): void {
     const decoded = this.decode(data);
