@@ -44,7 +44,7 @@ export default class WSConnection {
   private _session: string | null = null;
   private _heartbeater: NodeJS.Timer;
 
-  constructor(client: Client, shard: number = 0) {
+  constructor(client: Client, shard: number) {
     this.client = client;
     this.shard = shard;
 
