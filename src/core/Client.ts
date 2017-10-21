@@ -1,7 +1,7 @@
 import { AxiosInstance } from 'axios';
 
 import Connection from './Connection';
-import Redis from '../redis';
+import redis from '../redis';
 
 import { Error, codes } from '../util/errors';
 import request from '../util/request';
@@ -9,23 +9,29 @@ import request from '../util/request';
 export type Gateway = { url: string, shards: number } | null;
 export interface Options {
   token: string;
+  cache?: boolean;
 };
 
 export default class Client {
-  public readonly options: Options;
-  public readonly redis: Redis;
+  public readonly token: string;
+  public cache: boolean;
+
+  public readonly redis: any;
   public readonly request: AxiosInstance;
   public readonly connections: Connection[] = [];
 
   public gateway: Gateway = null;
 
   constructor(options: Options) {
-    this.options = options;
-    this.redis = new Redis(this);
+    Object.defineProperty(this, 'token', { value: options.token });
+
+    this.redis = redis();
+    this.cache = options.cache === undefined ? true : options.cache;
     this.request = request(options.token);
   }
 
-  async fetchGateway(): Promise<Gateway> {
+  async fetchGateway(force = false): Promise<Gateway> {
+    if (this.gateway && !force) return this.gateway;
     return this.gateway = (await this.request.get('/gateway/bot')).data;
   }
 

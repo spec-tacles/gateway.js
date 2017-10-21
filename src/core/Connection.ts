@@ -4,11 +4,12 @@ import { Buffer } from 'buffer';
 import throttle = require('p-throttle');
 
 import Client from './Client';
+import Events from './Events';
 
 import { Error, codes } from '../util/errors';
 import { op, dispatch } from '../util/constants';
 
-let erlpack: { pack: (d: Object) => Buffer, unpack: (d: Buffer | Uint8Array) => Object } | void;
+let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
 try {
   erlpack = require('erlpack');
 } catch (e) {
@@ -19,7 +20,7 @@ const identify = throttle(function (this: WSConnection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
   this.send(op.IDENTFY, {
-    token: this.client.options.token,
+    token: this.client.token,
     properties: {
       $os: os.platform(),
       $browser: 'spectacles',
@@ -32,9 +33,12 @@ const identify = throttle(function (this: WSConnection) {
   });
 }, 1, 5000);
 
+export type Payload = { t?: string, s?: number, op: number, d: any };
+
 export default class WSConnection {
   public readonly client: Client;
   public readonly shard: number;
+  public readonly events: Events;
 
   public readonly encoding: 'json' | 'etf' = typeof erlpack === 'undefined' ? 'json' : 'etf';
   public readonly version: number = 6;
@@ -47,6 +51,7 @@ export default class WSConnection {
   constructor(client: Client, shard: number) {
     this.client = client;
     this.shard = shard;
+    this.events = new Events(this);
 
     this.receive = this.receive.bind(this);
     this.close = this.close.bind(this);
@@ -92,7 +97,7 @@ export default class WSConnection {
     if (!this.session) throw new Error(codes.NO_SESSION);
 
     return this.send(op.RESUME, {
-      token: this.client.options.token,
+      token: this.client.token,
       seq: this.seq,
       session: this.session,
     });
@@ -110,9 +115,9 @@ export default class WSConnection {
 
     switch (decoded.op) {
       case op.DISPATCH:
-        this._seq = decoded.s;
+        if (decoded.s) this._seq = decoded.s;
         if (decoded.t === dispatch.READY) this._session = decoded.d.session_id;
-        this.client.redis.publishAsync(decoded.t, this.encode(decoded.d));
+        this.events.handle(decoded);
         break;
       case op.HEARTBEAT:
         this.heartbeat();
@@ -155,7 +160,7 @@ export default class WSConnection {
     }
   }
 
-  public decode(data: WebSocket.Data): any {
+  public decode(data: WebSocket.Data): Payload {
     if (data instanceof ArrayBuffer) data = Buffer.from(data);
     if (Array.isArray(data)) data = data.join();
 
