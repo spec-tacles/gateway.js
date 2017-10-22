@@ -1,19 +1,23 @@
+import Client from './Client';
 import Connection, { Payload } from './Connection';
 import Cache from '@spectacles/cache';
 
 import { dispatch } from '../util/constants';
 
 export default class EventHandler {
+  public readonly client: Client;
   public readonly connection: Connection;
   public readonly cache: Cache;
 
   constructor(connection: Connection) {
+    this.client = connection.client;
     this.connection = connection;
-    this.cache = new Cache({ redis: this.connection.client.redis });
+    this.cache = new Cache({ redis: this.client.redis });
   }
 
   public async handle(data: Payload) {
-    if (this.connection.client.cache) await this.store(data);
+    if (this.client.cache) await this.store(data);
+    this.client.redis.publishAsync(data.t, this.connection.encode(data.d));
   }
 
   public async store(data: Payload) {
