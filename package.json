@@ -1,12 +1,13 @@
 {
-  "name": "gateway",
+  "name": "@spectacles/gateway",
   "version": "0.1.0",
-  "description": "A simple gateway proxy to Redis.",
+  "description": "The Discord gateway proxy to Redis.",
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node --trace-warnings test/index.js",
-    "dev": "gulp && env-cmd .env npm start"
+    "dev": "gulp && env-cmd .env npm start",
+    "prepare": "gulp"
   },
   "repository": {
     "type": "git",
