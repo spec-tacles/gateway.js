@@ -20,7 +20,7 @@ const identify = throttle(function (this: WSConnection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
   this.send(op.IDENTFY, {
-    token: this.client.token,
+    token: this.client.data.token,
     properties: {
       $os: os.platform(),
       $browser: 'spectacles',
@@ -97,7 +97,7 @@ export default class WSConnection {
     if (!this.session) throw new Error(codes.NO_SESSION);
 
     return this.send(op.RESUME, {
-      token: this.client.token,
+      token: this.client.data.token,
       seq: this.seq,
       session: this.session,
     });

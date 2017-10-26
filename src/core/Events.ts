@@ -25,7 +25,7 @@ export default class EventHandler {
 
   public async handle(data: Payload) {
     if (this.client.cache) await this.store(data);
-    this.client.data.redis.publish(data.t, this.connection.encode(data.d));
+    if (data.t) this.client.data.redis.publish(data.t, this.connection.encode(data.d));
   }
 
   public async store(data: Payload) {

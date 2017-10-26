@@ -1,4 +1,3 @@
-import { AxiosInstance } from 'axios';
 import DataManager from '@spectacles/spectacles.js';
 
 import Connection from './Connection';
@@ -27,7 +26,7 @@ export default class Client {
 
   async fetchGateway(force = false): Promise<Gateway> {
     if (this.gateway && !force) return this.gateway;
-    return this.gateway = (await this.data.rest.get('/gateway/bot')).data;
+    return this.gateway = (await this.data.rest.get<Gateway>('/gateway/bot')).data;
   }
 
   spawn(): void {
