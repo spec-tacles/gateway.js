@@ -177,7 +177,7 @@ export default class WSConnection {
     }
   }
 
-  public encode(data: Object): any {
+  public encode(data: Object): string | Buffer {
     switch (this.encoding) {
       case 'json':
         return JSON.stringify(data);
