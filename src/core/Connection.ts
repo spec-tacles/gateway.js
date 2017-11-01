@@ -16,7 +16,7 @@ try {
   // do nothing
 }
 
-const identify = throttle(function (this: WSConnection) {
+const identify = throttle(function (this: Connection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
   this.send(op.IDENTFY, {
@@ -35,12 +35,25 @@ const identify = throttle(function (this: WSConnection) {
 
 export type Payload = { t?: string, s?: number, op: number, d: any };
 
-export default class WSConnection {
+export default class Connection {
+  public static encoding = erlpack ? 'etf' : 'json';
+
+  public static encode(data: any) {
+    return erlpack ? erlpack.pack(data) : JSON.stringify(data)
+  }
+
+  public static decode(data: WebSocket.Data) {
+    if (data instanceof ArrayBuffer) data = Buffer.from(data);
+    if (Array.isArray(data)) data = data.join();
+    if (typeof data === 'string') data = Buffer.from(data);
+
+    return erlpack ? erlpack.unpack(data) : JSON.parse(data.toString());
+  }
+
   public readonly client: Client;
   public readonly shard: number;
   public readonly events: Events;
 
-  public readonly encoding: 'json' | 'etf' = typeof erlpack === 'undefined' ? 'json' : 'etf';
   public readonly version: number = 6;
 
   private _ws: WebSocket;
@@ -54,7 +67,7 @@ export default class WSConnection {
     this.events = new Events(this);
 
     this.receive = this.receive.bind(this);
-    this.close = this.close.bind(this);
+    this.handleClose = this.handleClose.bind(this);
 
     this.send = throttle(this.send.bind(this), 120, 60);
     this.identify = identify;
@@ -64,7 +77,7 @@ export default class WSConnection {
     return this._seq;
   }
 
-  public get session(): string|null {
+  public get session(): string | null {
     return this._session;
   }
 
@@ -75,16 +88,16 @@ export default class WSConnection {
   public connect(): void {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
-    this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${this.encoding}`);
+    this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${Connection.encoding}`);
     this._ws.on('message', this.receive);
-    this._ws.on('close', this.close);
+    this._ws.on('close', this.handleClose);
     this._ws.on('error', console.error);
   }
 
   public disconnect(): void {
     if (this._ws.readyState !== WebSocket.CLOSED && this._ws.readyState !== WebSocket.CLOSING) this._ws.close();
     this._ws.removeListener('message', this.receive);
-    this._ws.removeListener('close', this.close);
+    this._ws.removeListener('close', this.handleClose);
     this._ws.removeListener('error', console.error);
   }
 
@@ -111,7 +124,7 @@ export default class WSConnection {
   public identify(): void {}
 
   public receive(data: WebSocket.Data): void {
-    const decoded = this.decode(data);
+    const decoded = Connection.decode(data);
 
     switch (decoded.op) {
       case op.DISPATCH:
@@ -144,10 +157,10 @@ export default class WSConnection {
   }
 
   public send(op: number, d: Object): void {
-    return this._ws.send(this.encode({ op, d }));
+    return this._ws.send(Connection.encode({ op, d }));
   }
 
-  public close(code: number, reason: string): void {
+  public handleClose(code: number, reason: string): void {
     switch (code) {
       case 4007: // invalid sequence (clear session and reconnect)
       case 4009: // session timed out (clear session and reconnect)
@@ -157,35 +170,6 @@ export default class WSConnection {
         break;
       default:
         throw new global.Error(`WebSocket closed ${code}: ${reason}`);
-    }
-  }
-
-  public decode(data: WebSocket.Data): Payload {
-    if (data instanceof ArrayBuffer) data = Buffer.from(data);
-    if (Array.isArray(data)) data = data.join();
-
-    switch (this.encoding) {
-      case 'json':
-        if (data instanceof Buffer) return JSON.parse(data.toString());
-        return JSON.parse(data);
-      case 'etf':
-        if (typeof erlpack === 'undefined') throw new Error(codes.ERLPACK_NOT_INSTALLED);
-        if (typeof data === 'string') data = Buffer.from(data);
-        return erlpack.unpack(data);
-      default:
-        throw new Error(codes.INVALID_ENCODING);
-    }
-  }
-
-  public encode(data: Object): string | Buffer {
-    switch (this.encoding) {
-      case 'json':
-        return JSON.stringify(data);
-      case 'etf':
-        if (typeof erlpack === 'undefined') throw new Error(codes.ERLPACK_NOT_INSTALLED);
-        return erlpack.pack(data);
-      default:
-        throw new Error(codes.INVALID_ENCODING);
     }
   }
 };

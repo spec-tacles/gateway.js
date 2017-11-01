@@ -25,7 +25,7 @@ export default class EventHandler {
 
   public async handle(data: Payload) {
     if (this.client.cache) await this.store(data);
-    if (data.t) this.client.data.redis.publish(data.t, this.connection.encode(data.d));
+    if (data.t) this.client.data.redis.publish(data.t, Connection.encode(data.d).toString());
   }
 
   public async store(data: Payload) {
@@ -69,6 +69,9 @@ export default class EventHandler {
         break;
       case dispatch.GUILD_MEMBER_REMOVE:
         // TODO: delete guild member
+        break;
+      case dispatch.VOICE_STATE_UPDATE:
+        await this.actions.updateVoiceState(d);
         break;
     }
   }

@@ -5,27 +5,12 @@ import * as redis from 'redis-p';
 
 import { Error, codes } from '../util/errors';
 
-let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
-try {
-  erlpack = require('erlpack');
-} catch (e) {
-  // do nothing
-}
-
 export type Gateway = { url: string, shards: number } | null;
 export interface Options {
   token: string;
   redis?: redis.ClientOpts,
   cache?: boolean;
 };
-
-export function decode(data: Buffer) {
-  return erlpack ? erlpack.unpack(data) : JSON.parse(data.toString());
-}
-
-export function encode(data: any) {
-  return erlpack ? erlpack.pack(data) : JSON.stringify(data);
-}
 
 export default class Client {
   public cache: boolean;
@@ -58,7 +43,7 @@ export default class Client {
 
     const listener = this.data.redis.duplicate({ return_buffers: true });
     listener.on('message', (_: Buffer, buf: Buffer) => {
-      const data = decode(buf) as { guild_id: string, d: any, op: number };
+      const data = Connection.decode(buf) as { guild_id: string, d: any, op: number };
       if (typeof data.guild_id === 'number') this.connections[(data.guild_id >> 22) % this.connections.length].send(data.op, data.d);
     });
     listener.subscribe('SEND');
