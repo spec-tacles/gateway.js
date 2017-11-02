@@ -44,7 +44,7 @@ export default class Client {
     const listener = this.data.redis.duplicate({ return_buffers: true });
     listener.on('message', (_: Buffer, buf: Buffer) => {
       const data = Connection.decode(buf) as { guild_id: string, d: any, op: number };
-      if (typeof data.guild_id === 'number') this.connections[(data.guild_id >> 22) % this.connections.length].send(data.op, data.d);
+      if (data.guild_id) this.connections[(data.guild_id as any >> 22) % this.connections.length].send(data.op, data.d);
     });
     listener.subscribe('SEND');
   }

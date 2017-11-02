@@ -73,6 +73,9 @@ export default class EventHandler {
       case dispatch.VOICE_STATE_UPDATE:
         await this.actions.updateVoiceState(d);
         break;
+      case dispatch.VOICE_SERVER_UPDATE:
+        await this.actions.updateVoiceServer(d);
+        break;
     }
   }
 }
