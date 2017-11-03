@@ -7,7 +7,7 @@ import Client from './Client';
 import Events from './Events';
 
 import { Error, codes } from '../util/errors';
-import { op, dispatch } from '../util/constants';
+import { op, dispatch } from '@spectacles/spectacles.js';
 
 let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
 try {
@@ -19,7 +19,7 @@ try {
 const identify = throttle(function (this: Connection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
-  this.send(op.IDENTFY, {
+  this.send(op.IDENTIFY, {
     token: this.client.data.token,
     properties: {
       $os: os.platform(),

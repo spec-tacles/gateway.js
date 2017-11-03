@@ -4,7 +4,7 @@ import { RedisClient } from 'redis-p';
 import Client from './Client';
 import Connection, { Payload } from './Connection';
 
-import { dispatch } from '../util/constants';
+import { dispatch } from '@spectacles/spectacles.js';
 
 export default class EventHandler {
   public readonly client: Client;
@@ -25,7 +25,7 @@ export default class EventHandler {
 
   public async handle(data: Payload) {
     if (this.client.cache) await this.store(data);
-    if (data.t) this.client.data.redis.publish(data.t, Connection.encode(data.d).toString());
+    if (data.t) this.client.data.redis.publish(data.t, Connection.encode(data.d) as any);
   }
 
   public async store(data: Payload) {
