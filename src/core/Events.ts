@@ -31,6 +31,17 @@ export default class EventHandler {
   public async store(data: Payload) {
     const d = data.d;
     switch (data.t) {
+      case dispatch.READY: {
+        const multi = this.redis.multi();
+
+        this.actions.updateUser(d.user, multi);
+        for (const g of d.guilds) this.actions.updateGuild(g, multi);
+        for (const c of d.private_channels) this.actions.updateChannel(c, multi);
+        await multi.exec();
+
+        break;
+      }
+
       // CHANNELS
       case dispatch.CHANNEL_CREATE:
       case dispatch.CHANNEL_UPDATE:
@@ -70,6 +81,8 @@ export default class EventHandler {
       case dispatch.GUILD_MEMBER_REMOVE:
         // TODO: delete guild member
         break;
+
+      // VOICE
       case dispatch.VOICE_STATE_UPDATE:
         await this.actions.updateVoiceState(d);
         break;
