@@ -8,12 +8,14 @@ import { Error, codes } from '../util/errors';
 export type Gateway = { url: string, shards: number } | null;
 export interface Options {
   token: string;
-  redis?: redis.ClientOpts,
+  redis?: redis.ClientOpts;
   cache?: boolean;
+  reconnect?: boolean;
 };
 
 export default class Client {
   public cache: boolean;
+  public reconnect: boolean;
   public readonly connections: Connection[] = [];
   public readonly data: DataManager;
 
@@ -21,6 +23,7 @@ export default class Client {
 
   constructor(options: Options) {
     this.cache = options.cache === undefined ? true : options.cache;
+    this.reconnect = options.reconnect === undefined ? true : options.reconnect;
     this.data = new DataManager(options);
   }
 

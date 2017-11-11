@@ -169,7 +169,8 @@ export default class Connection {
         this.reconnect();
         break;
       default:
-        throw new global.Error(`WebSocket closed ${code}: ${reason}`);
+        if (this.client.reconnect) this.reconnect();
+        else throw new global.Error(`WebSocket closed ${code}: ${reason}`);
     }
   }
 };
