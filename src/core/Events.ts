@@ -74,6 +74,12 @@ export default class EventHandler {
       case dispatch.GUILD_ROLE_UPDATE:
         await this.actions.updateRole(d.guild_id, d.role);
         break;
+      case dispatch.GUILD_MEMBERS_CHUNK: {
+        const multi = this.redis.multi();
+        for (const m of d.members) this.actions.updateMember(d.guild_id, m, multi);
+        await multi.exec();
+        break;
+      }
       case dispatch.GUILD_MEMBER_UPDATE:
       case dispatch.GUILD_MEMBER_ADD:
         await this.actions.updateMember(d.guild_id, d);
