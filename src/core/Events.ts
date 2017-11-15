@@ -73,7 +73,7 @@ export default class EventHandler {
       // GUILDS
       case dispatch.GUILD_DELETE:
         if (d.unavailable === undefined) {
-          // TODO: delete guild
+          await this.actions.removeGuild(d.id);
           break;
         }
       case dispatch.GUILD_CREATE:
