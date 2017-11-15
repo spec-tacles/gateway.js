@@ -5,6 +5,7 @@ import Client from './Client';
 import Connection, { Payload } from './Connection';
 
 import { dispatch } from '@spectacles/spectacles.js';
+import { disconnect } from 'cluster';
 
 export default class EventHandler {
   public readonly client: Client;
@@ -58,6 +59,15 @@ export default class EventHandler {
         break;
       case dispatch.MESSAGE_DELETE:
         // TODO: delete message
+        break;
+      case dispatch.MESSAGE_REACTION_ADD:
+        await this.actions.addReaction(d);
+        break;
+      case dispatch.MESSAGE_REACTION_REMOVE:
+        await this.actions.removeReaction(d);
+        break;
+      case dispatch.MESSAGE_REACTION_REMOVE_ALL:
+        await this.client.data.channels.get(d.channel_id).messages.get(d.message_id).reactions.clear();
         break;
 
       // GUILDS
