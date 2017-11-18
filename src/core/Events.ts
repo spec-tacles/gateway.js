@@ -35,6 +35,7 @@ export default class EventHandler {
       case dispatch.READY: {
         const multi = this.redis.multi();
 
+        this.client.data.redis.set('me', d.user.id);
         this.actions.updateUser(d.user, multi);
         for (const g of d.guilds) this.actions.updateGuild(g, multi);
         for (const c of d.private_channels) this.actions.updateChannel(c, multi);
