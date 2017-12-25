@@ -4,10 +4,9 @@ import { Buffer } from 'buffer';
 import throttle = require('p-throttle');
 
 import Client from './Client';
-import Events from './Events';
 
 import { Error, codes } from '../util/errors';
-import { op, dispatch } from '@spectacles/spectacles.js';
+import { op, dispatch, encoding, encode, decode } from '@spectacles/spectacles.js';
 
 let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
 try {
@@ -20,7 +19,7 @@ const identify = throttle(function (this: Connection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
   this.send(op.IDENTIFY, {
-    token: this.client.data.token,
+    token: this.client.token,
     properties: {
       $os: os.platform(),
       $browser: 'spectacles',
@@ -36,35 +35,19 @@ const identify = throttle(function (this: Connection) {
 export type Payload = { t?: string, s?: number, op: number, d: any };
 
 export default class Connection {
-  public static encoding = erlpack ? 'etf' : 'json';
-
-  public static encode(data: any) {
-    return erlpack ? erlpack.pack(data) : JSON.stringify(data)
-  }
-
-  public static decode(data: WebSocket.Data) {
-    if (data instanceof ArrayBuffer) data = Buffer.from(data);
-    if (Array.isArray(data)) data = data.join();
-    if (typeof data === 'string') data = Buffer.from(data);
-
-    return erlpack ? erlpack.unpack(data) : JSON.parse(data.toString());
-  }
-
   public readonly client: Client;
   public readonly shard: number;
-  public readonly events: Events;
 
   public readonly version: number = 6;
 
-  private _ws: WebSocket;
+  private _ws?: WebSocket;
   private _seq: number = -1;
   private _session: string | null = null;
-  private _heartbeater: NodeJS.Timer;
+  private _heartbeater?: NodeJS.Timer;
 
   constructor(client: Client, shard: number) {
     this.client = client;
     this.shard = shard;
-    this.events = new Events(this);
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
@@ -82,23 +65,24 @@ export default class Connection {
   }
 
   public get ws(): WebSocket {
+    if (!this._ws) throw new Error(codes.NO_WEBSOCKET);
     return this._ws;
   }
 
   public connect(): void {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
-    this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${Connection.encoding}`);
+    this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
     this._ws.on('message', this.receive);
     this._ws.on('close', this.handleClose);
     this._ws.on('error', console.error);
   }
 
   public disconnect(): void {
-    if (this._ws.readyState !== WebSocket.CLOSED && this._ws.readyState !== WebSocket.CLOSING) this._ws.close();
-    this._ws.removeListener('message', this.receive);
-    this._ws.removeListener('close', this.handleClose);
-    this._ws.removeListener('error', console.error);
+    if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
+    this.ws.removeListener('message', this.receive);
+    this.ws.removeListener('close', this.handleClose);
+    this.ws.removeListener('error', console.error);
   }
 
   public reconnect(): void {
@@ -110,7 +94,7 @@ export default class Connection {
     if (!this.session) throw new Error(codes.NO_SESSION);
 
     return this.send(op.RESUME, {
-      token: this.client.data.token,
+      token: this.client.token,
       seq: this.seq,
       session: this.session,
     });
@@ -124,13 +108,14 @@ export default class Connection {
   public identify(): void {}
 
   public receive(data: WebSocket.Data): void {
-    const decoded = Connection.decode(data);
+    const decoded = decode(data);
 
     switch (decoded.op) {
       case op.DISPATCH:
-        if (decoded.s) this._seq = decoded.s;
+        if (decoded.s && decoded.s > this._seq) this._seq = decoded.s;
         if (decoded.t === dispatch.READY) this._session = decoded.d.session_id;
-        this.events.handle(decoded);
+        if (this.client.events.has(decoded.t))
+          this.client.publish(decoded.t, Buffer.from(JSON.stringify(decoded.d)));
         break;
       case op.HEARTBEAT:
         this.heartbeat();
@@ -151,13 +136,13 @@ export default class Connection {
 
         break;
       case op.HEARTBEAT_ACK:
-        // reconnect if not received before next heartbeat attempt
+        // TODO: reconnect if not received before next heartbeat attempt
         break;
     }
   }
 
   public send(op: number, d: Object): void {
-    return this._ws.send(Connection.encode({ op, d }));
+    return this.ws.send(encode({ op, d }));
   }
 
   public handleClose(code: number, reason: string): void {
