@@ -1,6 +1,7 @@
 import Spectacles, { decode } from '@spectacles/spectacles.js';
 import Connection from './Connection';
 import { Error, codes } from '../util/errors';
+import { AxiosRequestConfig } from 'axios';
 
 export type Gateway = { url: string, shards: number };
 export interface Options {
@@ -8,6 +9,18 @@ export interface Options {
   events?: Set<string>;
   reconnect?: boolean;
 };
+
+declare module 'axios' {
+  class AxiosInstance {
+    get<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
+    delete<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
+    head<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
+    options<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
+    post<T = any>(endpoint: string, data: any, options?: AxiosRequestConfig): Promise<T>;
+    put<T = any>(url: string, data: any, options?: AxiosRequestConfig): Promise<T>;
+    patch<T = any>(endpoint: string, data: any, options?: AxiosRequestConfig): Promise<T>;
+  }
+}
 
 export default class Client extends Spectacles {
   /**
@@ -38,7 +51,7 @@ export default class Client extends Spectacles {
 
   async fetchGateway(force = false): Promise<Gateway> {
     if (this.gateway && !force) return this.gateway;
-    const gateway = (await this.rest.get<Gateway>('/gateway/bot')).data;
+    const gateway = await this.rest.get<Gateway>('/gateway/bot');
     return this.gateway = gateway;
   }
 
