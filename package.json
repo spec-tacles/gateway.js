@@ -17,7 +17,7 @@
   "author": "Will Nelson <nelson.will@live.com>",
   "license": "MIT",
   "dependencies": {
-    "@spectacles/spectacles.js": "^0.2.0",
+    "@spectacles/spectacles.js": "^0.3.0",
     "p-throttle": "^1.1.0",
     "ws": "^3.2.0"
   },

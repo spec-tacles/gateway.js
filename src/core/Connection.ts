@@ -15,10 +15,10 @@ try {
   // do nothing
 }
 
-const identify = throttle(function (this: Connection) {
+const identify = throttle(async function (this: Connection) {
   if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
 
-  this.send(op.IDENTIFY, {
+  await this.send(op.IDENTIFY, {
     token: this.client.token,
     properties: {
       $os: os.platform(),
@@ -40,6 +40,8 @@ export default class Connection {
 
   public readonly version: number = 6;
 
+  public identify: () => Promise<void>;
+
   private _ws?: WebSocket;
   private _seq: number = -1;
   private _session: string | null = null;
@@ -51,9 +53,12 @@ export default class Connection {
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
+    this.handleError = this.handleError.bind(this);
 
     this.send = throttle(this.send.bind(this), 120, 60);
     this.identify = identify;
+
+    this.connect();
   }
 
   public get seq(): number {
@@ -75,14 +80,14 @@ export default class Connection {
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
     this._ws.on('message', this.receive);
     this._ws.on('close', this.handleClose);
-    this._ws.on('error', console.error);
+    this._ws.on('error', this.handleError);
   }
 
   public disconnect(): void {
     if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
     this.ws.removeListener('message', this.receive);
     this.ws.removeListener('close', this.handleClose);
-    this.ws.removeListener('error', console.error);
+    this.ws.removeListener('error', this.handleError);
   }
 
   public reconnect(): void {
@@ -90,7 +95,7 @@ export default class Connection {
     this.connect();
   }
 
-  public resume(): void {
+  public resume(): Promise<void> {
     if (!this.session) throw new Error(codes.NO_SESSION);
 
     return this.send(op.RESUME, {
@@ -100,12 +105,9 @@ export default class Connection {
     });
   }
 
-  public heartbeat(): void {
+  public heartbeat(): Promise<void> {
     return this.send(op.HEARTBEAT, this.seq);
   }
-
-  // see throttled method above
-  public identify(): void {}
 
   public receive(data: WebSocket.Data): void {
     const decoded = decode(data);
@@ -141,11 +143,16 @@ export default class Connection {
     }
   }
 
-  public send(op: number, d: Object): void {
-    return this.ws.send(encode({ op, d }));
+  public send(op: number, d: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.ws.send(encode({ op, d }), (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
   }
 
-  public handleClose(code: number, reason: string): void {
+  private handleClose(code: number, reason: string): void {
     switch (code) {
       case 4007: // invalid sequence (clear session and reconnect)
       case 4009: // session timed out (clear session and reconnect)
@@ -157,5 +164,10 @@ export default class Connection {
         if (this.client.reconnect) this.reconnect();
         else throw new global.Error(`WebSocket closed ${code}: ${reason}`);
     }
+  }
+
+  private handleError(err: any) {
+    this.client.emit('error', err);
+    this.reconnect();
   }
 };

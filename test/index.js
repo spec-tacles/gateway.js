@@ -7,5 +7,8 @@ const client = new Client({
 });
 
 (async () => {
-  await client.login('localhost:32768');
+  await client.connect('localhost:32768');
+  console.log('connected');
+  await client.spawn();
+  console.log('spawned');
 })();

@@ -1,4 +1,4 @@
-import Spectacles, { decode } from '@spectacles/spectacles.js';
+import Spectacles, { encode, decode, exchanges } from '@spectacles/spectacles.js';
 import Connection from './Connection';
 import { Error, codes } from '../util/errors';
 import { AxiosRequestConfig } from 'axios';
@@ -6,7 +6,7 @@ import { AxiosRequestConfig } from 'axios';
 export type Gateway = { url: string, shards: number };
 export interface Options {
   token: string;
-  events?: Set<string>;
+  events?: Iterable<string>;
   reconnect?: boolean;
 };
 
@@ -46,37 +46,55 @@ export default class Client extends Spectacles {
   constructor(options: Options) {
     super(options.token);
     this.reconnect = options.reconnect === undefined ? true : options.reconnect;
-    this.events = options.events || new Set();
+    this.events = new Set(options.events || []);
   }
 
-  async fetchGateway(force = false): Promise<Gateway> {
+  public async fetchGateway(force = false): Promise<Gateway> {
     if (this.gateway && !force) return this.gateway;
     const gateway = await this.rest.get<Gateway>('/gateway/bot');
     return this.gateway = gateway;
   }
 
-  spawn(): void {
-    if (!this.gateway) throw new Error(codes.NO_GATEWAY);
-    if (this.connections.length) throw new Error(codes.ALREADY_SPAWNED);
+  public async spawn(shards?: number | number[], total?: number): Promise<void> {
+    const gateway = await this.fetchGateway();
 
-    for (let i = 0; i < this.gateway.shards; i++) {
-      const conn = new Connection(this, i);
-      this.connections.push(conn);
-      conn.connect();
+    if (total !== undefined) gateway.shards = total;
+    if (shards === undefined) shards = gateway.shards;
+    if (typeof shards === 'number') {
+      const count = shards;
+      shards = Array(shards);
+      for (let i = 0; i < count; i++) shards[i] = i;
     }
+
+    await Promise.all(shards.map(async shard => {
+      const str = shard.toString();
+      this.on(str, async ({ op, d }, ack) => {
+        try {
+          await this.connections[shard].send(op, d);
+          ack();
+        } catch (e) {
+          this.emit('error', e);
+        }
+      });
+      const q = await this.open(str, { exchange: exchanges.SEND, queue: '' });
+      await this.subscribe(q.queue);
+
+      this.connections[shard] = new Connection(this, shard);
+    }));
   }
 
-  async login(url: string = 'localhost', options?: any) {
-    await this.connect(url, options);
-    await this.fetchGateway();
-    this.spawn();
+  public async connect(url: string, options?: any) {
+    await super.connect(url, options);
+    await Promise.all(Array.from(this.events).map(e => this.open(e)));
+  }
 
-    this.on(Spectacles.SEND_QUEUE, (buf: Buffer) => {
-      const data = decode<{ guild_id: string, d: any, op: number }>(buf);
-      if (data.guild_id) this.connections[(data.guild_id as any >> 22) % this.connections.length].send(data.op, data.d);
-    });
-
-    await this.open([Spectacles.SEND_QUEUE, ...this.events]);
-    await this.subscribe(Spectacles.SEND_QUEUE);
+  /**
+   * Publish to opened channels.
+   * @param channel the channel to send to
+   * @param data the data to send
+   * @param options options for publishing
+   */
+  public publish(event: string, data: Buffer) {
+    return this.amqp.publish(exchanges.RECEIVE, event, data);
   }
 };
