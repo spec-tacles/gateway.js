@@ -84,6 +84,7 @@ export default class Connection {
   }
 
   public disconnect(): void {
+    if (this._heartbeater) clearInterval(this._heartbeater);
     if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
     this.ws.removeListener('message', this.receive);
     this.ws.removeListener('close', this.handleClose);
@@ -162,7 +163,7 @@ export default class Connection {
         break;
       default:
         if (this.client.reconnect) this.reconnect();
-        else throw new global.Error(`WebSocket closed ${code}: ${reason}`);
+        else this.handleError(`WebSocket closed ${code}: ${reason}`);
     }
   }
 

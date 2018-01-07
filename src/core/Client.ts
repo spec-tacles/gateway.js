@@ -1,4 +1,4 @@
-import Spectacles, { encode, decode, exchanges } from '@spectacles/spectacles.js';
+import Spectacles, { encode, decode } from '@spectacles/spectacles.js';
 import Connection from './Connection';
 import { Error, codes } from '../util/errors';
 import { AxiosRequestConfig } from 'axios';
@@ -6,6 +6,8 @@ import { AxiosRequestConfig } from 'axios';
 export type Gateway = { url: string, shards: number };
 export interface Options {
   token: string;
+  group?: string;
+  publisher?: string;
   events?: Iterable<string>;
   reconnect?: boolean;
 };
@@ -43,10 +45,16 @@ export default class Client extends Spectacles {
    */
   public gateway?: Gateway;
 
+  /**
+   * The group to publish events to.
+   */
+  public publisher: string;
+
   constructor(options: Options) {
-    super(options.token);
+    super(options.token, options.group || 'gateway');
     this.reconnect = options.reconnect === undefined ? true : options.reconnect;
     this.events = new Set(options.events || []);
+    this.publisher = options.publisher || 'default';
   }
 
   public async fetchGateway(force = false): Promise<Gateway> {
@@ -76,16 +84,10 @@ export default class Client extends Spectacles {
           this.emit('error', e);
         }
       });
-      const q = await this.open(str, { exchange: exchanges.SEND, queue: '' });
-      await this.subscribe(q.queue);
+      await this.subscribe(str);
 
       this.connections[shard] = new Connection(this, shard);
     }));
-  }
-
-  public async connect(url: string, options?: any) {
-    await super.connect(url, options);
-    await Promise.all(Array.from(this.events).map(e => this.open(e)));
   }
 
   /**
@@ -95,6 +97,6 @@ export default class Client extends Spectacles {
    * @param options options for publishing
    */
   public publish(event: string, data: Buffer) {
-    return this.amqp.publish(exchanges.RECEIVE, event, data);
+    return this.amqp.publish(this.publisher, event, data);
   }
 };
