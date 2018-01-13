@@ -10,6 +10,7 @@ export interface Options {
   publisher?: string;
   events?: Iterable<string>;
   reconnect?: boolean;
+  local?: boolean;
 };
 
 declare module 'axios' {
@@ -55,6 +56,10 @@ export default class Client extends Spectacles {
     this.reconnect = options.reconnect === undefined ? true : options.reconnect;
     this.events = new Set(options.events || []);
     this.publisher = options.publisher || 'default';
+    if (options.local) {
+      this.publish = this.emit;
+      this.subscribe = (() => {}) as any;
+    }
   }
 
   public async fetchGateway(force = false): Promise<Gateway> {

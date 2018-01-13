@@ -118,7 +118,7 @@ export default class Connection {
         if (decoded.s && decoded.s > this._seq) this._seq = decoded.s;
         if (decoded.t === dispatch.READY) this._session = decoded.d.session_id;
         if (this.client.events.has(decoded.t))
-          this.client.publish(decoded.t, Buffer.from(JSON.stringify(decoded.d)));
+          this.client.publish(decoded.t, this.client.publish === this.client.emit ? decoded.d : Buffer.from(JSON.stringify(decoded.d)));
         break;
       case op.HEARTBEAT:
         this.heartbeat();
