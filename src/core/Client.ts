@@ -101,7 +101,7 @@ export default class Client extends Spectacles {
    * @param data the data to send
    * @param options options for publishing
    */
-  public publish(event: string, data: Buffer) {
-    return this.amqp.publish(this.publisher, event, data);
+  public publish(event: string, data: any) {
+    return this.amqp.publish(this.publisher, event, Buffer.from(JSON.stringify(data)));
   }
 };
