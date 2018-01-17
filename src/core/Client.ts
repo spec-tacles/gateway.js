@@ -91,7 +91,8 @@ export default class Client extends Spectacles {
       });
       await this.subscribe(str);
 
-      this.connections[shard] = new Connection(this, shard);
+      const conn = this.connections[shard] = new Connection(this, shard);
+      await conn.connect();
     }));
   }
 

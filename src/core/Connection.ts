@@ -57,8 +57,6 @@ export default class Connection {
 
     this.send = throttle(this.send.bind(this), 120, 60);
     this.identify = identify;
-
-    this.connect();
   }
 
   public get seq(): number {
@@ -74,26 +72,41 @@ export default class Connection {
     return this._ws;
   }
 
-  public connect(): void {
+  public connect(): Promise<void> {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
+
+    this._seq = -1;
+    this._session = null;
+    if (this._heartbeater) {
+      clearInterval(this._heartbeater);
+      this._heartbeater = undefined;
+    }
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
     this._ws.on('message', this.receive);
     this._ws.on('close', this.handleClose);
     this._ws.on('error', this.handleError);
+
+    return new Promise(r => this.ws.once('open', r));
   }
 
-  public disconnect(): void {
-    if (this._heartbeater) clearInterval(this._heartbeater);
-    if (this.ws.readyState !== WebSocket.CLOSED && this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
+  public disconnect(): Promise<void> {
+    if (this.ws.readyState === WebSocket.CLOSED) return Promise.resolve();
+
+    const closed: Promise<void> = new Promise(r => this.ws.once('close', r));
+    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
+
     this.ws.removeListener('message', this.receive);
     this.ws.removeListener('close', this.handleClose);
     this.ws.removeListener('error', this.handleError);
+
+    return closed;
   }
 
-  public reconnect(): void {
-    this.disconnect();
-    this.connect();
+  public async reconnect(): Promise<void> {
+    await this.disconnect();
+    await new Promise(r => setTimeout(r, 1000 + 0.5 - Math.random()));
+    await this.connect();
   }
 
   public resume(): Promise<void> {
@@ -152,22 +165,28 @@ export default class Connection {
     });
   }
 
-  private handleClose(code: number, reason: string): void {
+  private async handleClose(code: number, reason: string): Promise<void> {
+    if (this._heartbeater) {
+      clearInterval(this._heartbeater);
+      this._heartbeater = undefined;
+    }
+
     switch (code) {
       case 4007: // invalid sequence (clear session and reconnect)
       case 4009: // session timed out (clear session and reconnect)
         this._session = null;
       case 4000: // unknown error (reconnect)
-        this.reconnect();
+        await this.reconnect();
         break;
       default:
-        if (this.client.reconnect) this.reconnect();
-        else this.handleError(`WebSocket closed ${code}: ${reason}`);
+        console.log(code, reason);
+        if (this.client.reconnect) await this.reconnect();
+        else await this.handleError(`WebSocket closed ${code}: ${reason}`);
     }
   }
 
-  private handleError(err: any) {
+  private async handleError(err: any) {
     this.client.emit('error', err);
-    this.reconnect();
+    await this.reconnect();
   }
 };
