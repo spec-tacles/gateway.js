@@ -46,6 +46,7 @@ export default class Connection {
   private _seq: number = -1;
   private _session: string | null = null;
   private _heartbeater?: NodeJS.Timer;
+  private _acked = true;
 
   constructor(client: Client, shard: number) {
     this.client = client;
@@ -72,35 +73,29 @@ export default class Connection {
     return this._ws;
   }
 
-  public connect(): Promise<void> {
+  public async connect(): Promise<void> {
     if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
-
-    this._seq = -1;
-    this._session = null;
-    if (this._heartbeater) {
-      clearInterval(this._heartbeater);
-      this._heartbeater = undefined;
-    }
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
     this._ws.on('message', this.receive);
     this._ws.on('close', this.handleClose);
     this._ws.on('error', this.handleError);
 
-    return new Promise(r => this.ws.once('open', r));
+    await new Promise(r => this.ws.once('open', r));
   }
 
-  public disconnect(): Promise<void> {
+  public async disconnect(): Promise<void> {
+    console.log(this.ws.readyState);
     if (this.ws.readyState === WebSocket.CLOSED) return Promise.resolve();
-
-    const closed: Promise<void> = new Promise(r => this.ws.once('close', r));
-    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
 
     this.ws.removeListener('message', this.receive);
     this.ws.removeListener('close', this.handleClose);
     this.ws.removeListener('error', this.handleError);
 
-    return closed;
+    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
+    await new Promise(r => this.ws.once('close', r));
+    this._seq = -1;
+    this._session = null;
   }
 
   public async reconnect(): Promise<void> {
@@ -144,14 +139,21 @@ export default class Connection {
         break;
       case op.HELLO:
         if (this._heartbeater) clearInterval(this._heartbeater);
-        this._heartbeater = setInterval(() => this.heartbeat(), decoded.d.heartbeat_interval);
+        this._heartbeater = setInterval(() => {
+          if (this._acked) {
+            this.heartbeat();
+            this._acked = false;
+          } else {
+            this.reconnect();
+          }
+        }, decoded.d.heartbeat_interval);
 
         if (this._session) this.resume();
         else this.identify();
 
         break;
       case op.HEARTBEAT_ACK:
-        // TODO: reconnect if not received before next heartbeat attempt
+        this._acked = true;
         break;
     }
   }
@@ -166,6 +168,7 @@ export default class Connection {
   }
 
   private async handleClose(code: number, reason: string): Promise<void> {
+    this._seq = -1;
     if (this._heartbeater) {
       clearInterval(this._heartbeater);
       this._heartbeater = undefined;
@@ -179,7 +182,7 @@ export default class Connection {
         await this.reconnect();
         break;
       default:
-        console.log(code, reason);
+        this._session = null;
         if (this.client.reconnect) await this.reconnect();
         else await this.handleError(`WebSocket closed ${code}: ${reason}`);
     }
