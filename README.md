@@ -47,3 +47,36 @@ await client.guilds['some guild id'].members['some user id'].roles['some role id
 ```
 
 That's basically it: given the data from Discord, you're free to do with it as you please. Spectacles makes no assumptions about how or whether you want to store it, use it, or receive it. Please refer to the [Discord API documentation](https://discordapp.com/developers/docs/intro) for details about their endpoints.
+
+## Your second bot
+Spectacles is inteded to be used with a distributed application, which we can easily enable like so:
+
+```js
+const { Client } = require('@spectacles/gateway');
+const client = new Client({ token: 'your token', events: ['MESSAGE_CREATE'] });
+(async () => {
+  await client.connect('your RabbitMQ url');
+  await client.spawn();
+})();
+```
+
+Then, in a separate application:
+
+```js
+const { Client } = require('@spectacles/spectacles.js');
+const Client = new Client('your token');
+client.on('MESSAGE_CREATE', (message, ack) => {
+  console.log(message);
+  ack();
+});
+(async () => {
+  await client.connect('your RabbitMQ url');
+  await client.subscribe('MESSAGE_CREATE');
+});
+```
+
+The gateway will send all events it's configured for into RabbitMQ queues that are then consumed by your client applications. You can spawn any number of the latter without worrying about Discord shards: sharding on Discord is automatically managed by the gateway client.
+
+Interacting with the Discord API is exactly as described above: the client will build your routes, fetch them, and manage ratelimiting.
+
+**Warning:** by default, RabbitMQ requires a message acknowledgement in order to consider the message delivered. This is provided as a function in the second parameter of the event emission, which you should call when you want to consider the message processed.
