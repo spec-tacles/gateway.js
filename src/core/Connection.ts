@@ -227,7 +227,7 @@ export default class Connection {
    */
   public receive(data: WebSocket.Data): void {
     const decoded = decode(data);
-    this._emit('receive', data);
+    this._emit('receive', decoded);
 
     switch (decoded.op) {
       case OP.DISPATCH:
