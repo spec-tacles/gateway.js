@@ -37,7 +37,7 @@ export default class Client extends EventEmitter {
    * @type {Connection[]}
    * @readonly
    */
-  public readonly connections: Connection[] = [];
+  public readonly connections: Map<number, Connection> = new Map();
 
   /**
    * Information about the gateway.
@@ -104,7 +104,8 @@ export default class Client extends EventEmitter {
     }
 
     await Promise.all(shards.map(shard => {
-      const conn = this.connections[shard] = new Connection(this, shard);
+      const conn = new Connection(this, shard);
+      this.connections.set(shard, conn);
       return conn.connect();
     }));
   }
