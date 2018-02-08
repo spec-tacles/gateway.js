@@ -1,82 +1,25 @@
-# Spectacles gateway
-The gateway to Discord.
+# Spectacles Gateway
 
-## Overview
-The Spectacles gateway is a powerful abstraction for the Discord API, enabling anything from a massive, fully-scalable application to a simple 1-server bot. Its approach is extremely minimalistic while providing a clean API interface, allowing the developer to beautifully orchestrate their data without extra fluff.
+Spawns shards and manages a bot's lifetime on the Discord WebSocket gateway.
 
-## Your first bot
-The Spectacles gateway client can be used in a variety of ways. However, let's just start off with the most basic example.
+## Getting started
 
 ```js
 const { Client } = require('@spectacles/gateway');
-const client = new Client({ token: 'your token', events: ['MESSAGE_CREATE'], local: true });
-client.on('MESSAGE_CREATE', console.log);
+const client = new Client('a token');
 client.spawn();
 ```
 
-This application will setup the client, automatically spawn the recommended number of shards, and log any messages it receives to console. You'll notice that the event name is exactly as emitted by Discord and the message contents are an object exactly as received from Discord; this pattern is core to Spectacles and will recur throughout the library. Adding any events to the `events` option as shown on line 2 of the above example will cause those events to be emitted on the client. Please refer to the [Discord API documentation](https://discordapp.com/developers/docs/topics/gateway#events) for information about available events.
+You've just spawned the recommended number of shards.
 
-Logging messages is all well and good, but let's get into the request-response system of a typical Discord bot.
+## Events
 
-```js
-client.on('MESSAGE_CREATE', (message) => {
-  if (message.content === '!ping') client.channels[message.channel_id].messages.create({ content: 'pong!' });
-});
-```
+The client emits events from its shards in the form `[event name], [shard id], [data]`.  Available events:
 
-This is our first encounter with Spectacles' REST system in order to create the "pong!" response. The client essentially acts as an API router, allowing you to query any endpoint on the Discord API. `client.channels[message.channel_id].messages` will set the endpoint to `/channels/${message.channel_id}/messages` and the call to `.create` will set the method to `POST`; obviously the parameters are the POST content. A full mapping of method name to HTTP method:
-
-| HTTP      | Spectacles |
-|-----------|------------|
-| GET       | fetch      |
-| POST      | create     |
-| PUT       | update     |
-| PATCH     | edit       |
-| DELETE    | delete     |
-
-For example, if you want to load information about all of a guild's roles:
-
-```js
-await client.guilds['some guild id'].roles.fetch();
-```
-
-Then, maybe you want to add a guild member to a role.
-
-```js
-await client.guilds['some guild id'].members['some user id'].roles['some role id'].update();
-```
-
-That's basically it: given the data from Discord, you're free to do with it as you please. Spectacles makes no assumptions about how or whether you want to store it, use it, or receive it. Please refer to the [Discord API documentation](https://discordapp.com/developers/docs/intro) for details about their endpoints.
-
-## Your second bot
-Spectacles is inteded to be used with a distributed application, which we can easily enable like so:
-
-```js
-const { Client } = require('@spectacles/gateway');
-const client = new Client({ token: 'your token', events: ['MESSAGE_CREATE'] });
-(async () => {
-  await client.connect('your RabbitMQ url');
-  await client.spawn();
-})();
-```
-
-Then, in a separate application:
-
-```js
-const { Client } = require('@spectacles/spectacles.js');
-const Client = new Client('your token');
-client.on('MESSAGE_CREATE', (message, ack) => {
-  console.log(message);
-  ack();
-});
-(async () => {
-  await client.connect('your RabbitMQ url');
-  await client.subscribe('MESSAGE_CREATE');
-});
-```
-
-The gateway will send all events it's configured for into RabbitMQ queues that are then consumed by your client applications. You can spawn any number of the latter without worrying about Discord shards: sharding on Discord is automatically managed by the gateway client.
-
-Interacting with the Discord API is exactly as described above: the client will build your routes, fetch them, and manage ratelimiting.
-
-**Warning:** by default, RabbitMQ requires a message acknowledgement in order to consider the message delivered. This is provided as a function in the second parameter of the event emission, which you should call when you want to consider the message processed.
+- `close` - WebSocket closures (follows the CloseEvent API)
+- `error` - proxied from the underlying WebSocket connection
+- `send` - data that is sent over the connection
+- `receive` - data that is received from the connection (decoded prior to emission)
+- `connect` - explicit connections to the WebSocket (fired initially and upon any reconnections)
+- `disconnect` - explicit disconnections from the WebSocket (i.e. when the client requests a connection closure)
+- `[Discord gateway event]` - OP 0 data, keyed by `t` (only `d` is emitted)
