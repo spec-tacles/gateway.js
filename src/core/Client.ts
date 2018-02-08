@@ -1,77 +1,101 @@
-import Spectacles, { encode, decode } from '@spectacles/spectacles.js';
 import Connection from './Connection';
-import { Error, codes } from '../util/errors';
-import { AxiosRequestConfig } from 'axios';
+import https = require('https');
+import { EventEmitter } from 'events';
 
+/**
+ * Information about connecting to the Discord gateway.
+ * @typedef Gateway
+ * @type {object}
+ * @prop {string} url The URL of the gateway
+ * @prop {number} shards The shard count to use
+ */
 export type Gateway = { url: string, shards: number };
-export interface Options {
-  token: string;
-  group?: string;
-  publisher?: string;
-  events?: Iterable<string>;
-  reconnect?: boolean;
-  local?: boolean;
-};
 
-declare module 'axios' {
-  class AxiosInstance {
-    get<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
-    delete<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
-    head<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
-    options<T = any>(url: string, options?: AxiosRequestConfig): Promise<T>;
-    post<T = any>(endpoint: string, data: any, options?: AxiosRequestConfig): Promise<T>;
-    put<T = any>(url: string, data: any, options?: AxiosRequestConfig): Promise<T>;
-    patch<T = any>(endpoint: string, data: any, options?: AxiosRequestConfig): Promise<T>;
-  }
+/**
+ * @typedef WSOptions
+ * @type {object}
+ * @prop {?boolean} reconnect Whether to automatically attempt to reconnect
+ */
+export interface Options {
+  reconnect?: boolean;
 }
 
-export default class Client extends Spectacles {
+/**
+ * Manages connections to the gateway.
+ */
+export default class Client extends EventEmitter {
+  public token: string;
+
   /**
-   * Whether to automatically reconnect upon unhandleable websocket close
+   * Whether to attempt to automatically reconnect; if false, an error event will be emitted on the client.
+   * @type {boolean}
    */
   public reconnect: boolean;
 
   /**
-   * Events to send to the message broker. WARNING: ensure all and only these events are consumed by connected clients
-   */
-  public events: Set<string>;
-
-  /**
-   * Current websocket connections
+   * Current connections to the gateway.
+   * @type {Connection[]}
+   * @readonly
    */
   public readonly connections: Connection[] = [];
 
   /**
-   * Gateway connection information
+   * Information about the gateway.
+   * @type {Gateway}
    */
   public gateway?: Gateway;
 
   /**
-   * The group to publish events to.
+   * @constructor
+   * @param {Client} client The client of this manager
+   * @param {WSOptions} [options={}] Connection options
    */
-  public publisher: string;
-
-  constructor(options: Options) {
-    super(options.token, options.group || 'gateway');
+  constructor(token: string, options: Options = {}) {
+    super();
+    this.token = token;
     this.reconnect = options.reconnect === undefined ? true : options.reconnect;
-    this.events = new Set(options.events || []);
-    this.publisher = options.publisher || 'default';
-    if (options.local) {
-      this.publish = this.emit;
-      this.subscribe = (() => {}) as any;
-    }
   }
 
+  /**
+   * Fetch the gateway info.
+   * @param {boolean} [force={}] Whether to override any previous cache
+   */
   public async fetchGateway(force = false): Promise<Gateway> {
     if (this.gateway && !force) return this.gateway;
-    const gateway = await this.rest.get<Gateway>('/gateway/bot');
-    return this.gateway = gateway;
+
+    return this.gateway = await new Promise<Gateway>((resolve, reject) => {
+      https.get({
+        host: 'discordapp.com',
+        path: '/api/v6/gateway/bot',
+        headers: {
+          Authorization: `Bot ${this.token}`,
+        },
+      }, (res) => {
+        if (res.statusCode !== 200) return reject(res);
+
+        let data = '';
+        res
+          .setEncoding('utf8')
+          .on('data', chunk => data += chunk)
+          .once('end', () => {
+            try {
+              return resolve(JSON.parse(data));
+            } catch (e) {
+              return reject(e);
+            }
+          })
+          .once('error', reject);
+      });
+    });
   }
 
-  public async spawn(shards?: number | number[], total?: number): Promise<void> {
+  /**
+   * Spawn shards.
+   * @param {number|number[]} [shards=this.gateway.shards] The shards to spawn
+   */
+  public async spawn(shards?: number | number[]): Promise<void> {
     const gateway = await this.fetchGateway();
 
-    if (total !== undefined) gateway.shards = total;
     if (shards === undefined) shards = gateway.shards;
     if (typeof shards === 'number') {
       const count = shards;
@@ -79,30 +103,9 @@ export default class Client extends Spectacles {
       for (let i = 0; i < count; i++) shards[i] = i;
     }
 
-    await Promise.all(shards.map(async shard => {
-      const str = shard.toString();
-      this.on(str, async ({ op, d }, ack) => {
-        try {
-          await this.connections[shard].send(op, d);
-          ack();
-        } catch (e) {
-          this.emit('error', e);
-        }
-      });
-      await this.subscribe(str);
-
+    await Promise.all(shards.map(shard => {
       const conn = this.connections[shard] = new Connection(this, shard);
-      await conn.connect();
+      return conn.connect();
     }));
   }
-
-  /**
-   * Publish to opened channels.
-   * @param channel the channel to send to
-   * @param data the data to send
-   * @param options options for publishing
-   */
-  public publish(event: string, data: any) {
-    return this.amqp.publish(this.publisher, event, Buffer.from(JSON.stringify(data)));
-  }
-};
+}
