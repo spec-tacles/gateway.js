@@ -173,9 +173,10 @@ export default class Connection {
 
   /**
    * Disconnect from the gateway.
+   * @param {?number} code The code to close the connection with, if any.
    * @returns {Promise<undefined>}
    */
-  public async disconnect(): Promise<void> {
+  public async disconnect(code?: number): Promise<void> {
     if (this.ws.readyState === WebSocket.CLOSED) return Promise.resolve();
     this._emit('disconnect');
 
@@ -183,7 +184,7 @@ export default class Connection {
     this.ws.removeListener('close', this.handleClose);
     this.ws.removeListener('error', this.handleError);
 
-    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close();
+    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close(code);
     await new Promise(r => this.ws.once('close', r));
     this._seq = -1;
     this._session = null;
@@ -191,10 +192,11 @@ export default class Connection {
 
   /**
    * Disconnect and reconnect to the gateway after a 1s timeout.
+   * @param {?number} code The code to close the connection with, if any.
    * @returns {Promise<undefined>}
    */
-  public async reconnect(): Promise<void> {
-    await this.disconnect();
+  public async reconnect(code?: number): Promise<void> {
+    await this.disconnect(code);
     await new Promise(r => setTimeout(r, 1e3 + Math.random() - 0.5));
     await this.connect();
   }
@@ -254,7 +256,7 @@ export default class Connection {
             this.heartbeat();
             this._acked = false;
           } else {
-            this.reconnect();
+            this.reconnect(4009);
           }
         }, decoded.d.heartbeat_interval);
 
