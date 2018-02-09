@@ -23,11 +23,9 @@
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",
-    "erlpack": "github:discordapp/erlpack",
     "utf-8-validate": "^3.0.3"
   },
   "devDependencies": {
-    "@types/amqplib": "^0.5.5",
     "@types/node": "^8.0.30",
     "@types/p-throttle": "^1.1.0",
     "@types/ws": "^3.0.2",
