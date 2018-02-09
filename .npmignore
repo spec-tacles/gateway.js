@@ -1,3 +1,6 @@
 src/
 test/
 node_modules/
+.vscode/
+gulpfile.js
+tsconfig.json

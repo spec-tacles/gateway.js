@@ -1,12 +1,14 @@
 import * as WebSocket from 'ws';
 import * as os from 'os';
 import * as throttle from 'p-throttle';
+import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
 
 import Client from './Client';
 
-import { Error, codes } from '../util/errors';
-import { OP, Dispatch, encoding, encode, decode } from '../util';
 import CloseEvent from '../util/CloseEvent';
+
+const { OP, Dispatch } = Constants;
+const { Codes, Error } = Errors;
 
 let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
 try {
@@ -16,7 +18,7 @@ try {
 }
 
 const identify = throttle(async function (this: Connection) {
-  if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
+  if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
 
   await this.send(OP.IDENTIFY, {
     token: this.client.token,
@@ -148,7 +150,7 @@ export default class Connection {
    * @throws {Error} Throws if there is no connection available.
    */
   public get ws(): WebSocket {
-    if (!this._ws) throw new Error(codes.NO_WEBSOCKET);
+    if (!this._ws) throw new Error(Codes.NO_WEBSOCKET);
     return this._ws;
   }
 
@@ -157,7 +159,7 @@ export default class Connection {
    * @returns {Promise<undefined>}
    */
   public async connect(): Promise<void> {
-    if (!this.client.gateway) throw new Error(codes.NO_GATEWAY);
+    if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
     this._emit('connect');
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
@@ -203,7 +205,7 @@ export default class Connection {
    * @throws {Error} Throws if there's no session available to resume.
    */
   public resume(): Promise<void> {
-    if (!this.session) throw new Error(codes.NO_SESSION);
+    if (!this.session) throw new Error(Codes.NO_SESSION);
 
     return this.send(OP.RESUME, {
       token: this.client.token,
