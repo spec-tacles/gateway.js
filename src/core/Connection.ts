@@ -185,9 +185,12 @@ export default class Connection {
     this.ws.removeListener('error', this.handleError);
 
     if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close(code);
-    await new Promise(r => this.ws.once('close', r));
+
     this._seq = -1;
     this._session = null;
+    if (this._heartbeater) clearInterval(this._heartbeater);
+
+    await new Promise(r => this.ws.once('close', r));
   }
 
   /**
