@@ -35,6 +35,6 @@
     "gulp": "^3.9.1",
     "gulp-sourcemaps": "^2.6.1",
     "gulp-typescript": "^3.2.3",
-    "typescript": "^2.5.2"
+    "typescript": "^2.7.1"
   }
 }
