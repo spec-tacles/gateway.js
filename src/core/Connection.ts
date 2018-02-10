@@ -34,8 +34,6 @@ const identify = throttle(async function (this: Connection) {
   });
 }, 1, 5e3);
 
-export type Payload = { t?: string, s?: number, op: number, d: any };
-
 /**
  * A Discord Gateway payload.
  * @typedef Payload
@@ -45,21 +43,73 @@ export type Payload = { t?: string, s?: number, op: number, d: any };
  * @property {number} op
  * @property {*} d
  */
+export type Payload = { t?: string, s?: number, op: number, d: any };
 
 /**
  * A connection to the Discord Gateway.
  */
 export default class Connection {
+  /**
+   * The connection manager.
+   * @type {Client}
+   * @readonly
+   */
   public readonly client: Client;
+
+  /**
+   * The shard that this connection represents.
+   * @type {number}
+   * @readonly
+   */
   public readonly shard: number;
-  public readonly version: number;
+
+  /**
+   * The API version to use.
+   * @type {number=6}
+   * @readonly
+   */
+  public readonly version: number = 6;
+
+  /**
+   * Send an identify packet.
+   * @returns {Promise<undefined>}
+   */
   public identify: () => Promise<void>;
 
+  /**
+   * The underlying websocket connection.
+   * @type {?WebSocket}
+   * @private
+   */
   private _ws?: WebSocket;
-  private _seq: number;
-  private _session: string | null;
+
+  /**
+   * The sequence of this connection.
+   * @type {number=-1}
+   * @private
+   */
+  private _seq: number = -1;
+
+  /**
+   * The session identifier of this connection.
+   * @type {?string}
+   * @private
+   */
+  private _session: string | null = null;
+
+  /**
+   * The heartbeater interval.
+   * @type {Timer}
+   * @private
+   */
   private _heartbeater?: NodeJS.Timer;
-  private _acked: boolean;
+
+  /**
+   * Whether the Discord Gateway has acknowledged the previous heartbeat.
+   * @type {boolean}
+   * @private
+   */
+  private _acked = true;
 
   /**
    * @constructor
@@ -67,75 +117,15 @@ export default class Connection {
    * @param {number} shard The shard of this connection
    */
   constructor(client: Client, shard: number) {
-    /**
-     * The connection manager.
-     * @type {Client}
-     * @readonly
-     */
     this.client = client;
-
-    /**
-     * The shard that this connection represents.
-     * @type {number}
-     * @readonly
-     */
     this.shard = shard;
-
-    /**
-     * The API version to use.
-     * @type {number}
-     * @default [6]
-     * @readonly
-     */
-    this.version = 6;
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
     this.handleError = this.handleError.bind(this);
 
     this.send = throttle(this.send.bind(this), 120, 60);
-
-    /**
-     * Send an identify packet.
-     * @returns {Promise<undefined>}
-     */
     this.identify = identify;
-
-    /**
-     * The underlying websocket connection.
-     * @type {?WebSocket}
-     * @private
-     */
-    this._ws = undefined;
-
-    /**
-     * The sequence of this connection.
-     * @type {number}
-     * @default [-1]
-     * @private
-     */
-    this._seq = -1;
-
-    /**
-     * The session identifier of this connection.
-     * @type {?string}
-     * @private
-     */
-    this._session = null;
-
-    /**
-     * The heartbeater interval.
-     * @type {?Timer}
-     * @private
-     */
-    this._heartbeater = undefined;
-
-    /**
-     * Whether the Discord Gateway has acknowledged the previous heartbeat.
-     * @type {boolean}
-     * @private
-     */
-    this._acked = true;
   }
 
   /**
