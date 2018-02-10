@@ -2,6 +2,13 @@ import Connection from './Connection';
 import https = require('https');
 import { EventEmitter } from 'events';
 
+
+export type Gateway = { url: string, shards: number };
+
+export interface Options {
+  reconnect?: boolean;
+}
+
 /**
  * Information about connecting to the Discord gateway.
  * @typedef Gateway
@@ -9,40 +16,20 @@ import { EventEmitter } from 'events';
  * @prop {string} url The URL of the gateway
  * @prop {number} shards The shard count to use
  */
-export type Gateway = { url: string, shards: number };
 
 /**
  * @typedef WSOptions
  * @type {object}
  * @prop {?boolean} reconnect Whether to automatically attempt to reconnect
  */
-export interface Options {
-  reconnect?: boolean;
-}
 
 /**
  * Manages connections to the gateway.
  */
 export default class Client extends EventEmitter {
   public token: string;
-
-  /**
-   * Whether to attempt to automatically reconnect; if false, an error event will be emitted on the client.
-   * @type {boolean}
-   */
   public reconnect: boolean;
-
-  /**
-   * Current connections to the gateway.
-   * @type {Connection[]}
-   * @readonly
-   */
-  public readonly connections: Map<number, Connection> = new Map();
-
-  /**
-   * Information about the gateway.
-   * @type {Gateway}
-   */
+  public readonly connections: Map<number, Connection>;
   public gateway?: Gateway;
 
   /**
@@ -53,7 +40,25 @@ export default class Client extends EventEmitter {
   constructor(token: string, options: Options = {}) {
     super();
     this.token = token;
+
+    /**
+     * Whether to attempt to automatically reconnect; if false, an error event will be emitted on the client.
+     * @type {boolean}
+     */
     this.reconnect = options.reconnect === undefined ? true : options.reconnect;
+
+    /**
+     * Current connections to the gateway.
+     * @type {Connection[]}
+     * @readonly
+     */
+    this.connections = new Map();
+
+    /**
+     * Information about the gateway.
+     * @type {Gateway}
+     */
+    this.gateway = undefined;
   }
 
   /**
