@@ -19,20 +19,20 @@
   "dependencies": {
     "@spectacles/util": "^0.2.0",
     "p-throttle": "^1.1.0",
-    "ws": "^3.2.0"
+    "ws": "^4.0.0"
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",
-    "utf-8-validate": "^3.0.3"
+    "utf-8-validate": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^8.0.30",
+    "@types/node": "^9.4.5",
     "@types/p-throttle": "^1.1.0",
-    "@types/ws": "^3.0.2",
+    "@types/ws": "^4.0.0",
     "del": "^3.0.0",
     "gulp": "^3.9.1",
     "gulp-sourcemaps": "^2.6.1",
-    "gulp-typescript": "^3.2.3",
+    "gulp-typescript": "^4.0.1",
     "typescript": "^2.7.1"
   }
 }
