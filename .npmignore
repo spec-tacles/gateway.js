@@ -2,5 +2,6 @@ src/
 test/
 node_modules/
 .vscode/
+.env
 gulpfile.js
 tsconfig.json

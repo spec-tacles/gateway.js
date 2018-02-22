@@ -27,7 +27,7 @@ const identify = throttle(async function (this: Connection) {
       $browser: 'spectacles',
       $device: 'spectacles',
     },
-    compress: false,
+    compress: encoding === 'etf',
     large_threshold: 250,
     shard: [this.shard, this.client.gateway.shards],
     presence: {},
