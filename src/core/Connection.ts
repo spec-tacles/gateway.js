@@ -190,7 +190,6 @@ export default class Connection {
     if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close(code);
 
     this._seq = -1;
-    this._session = null;
     if (this._heartbeater) clearInterval(this._heartbeater);
 
     await new Promise(r => this.ws.once('close', r));
