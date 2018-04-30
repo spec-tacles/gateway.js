@@ -27,6 +27,7 @@
     "utf-8-validate": "^4.0.0"
   },
   "devDependencies": {
+    "@spectacles/types": "^0.1.2",
     "@types/node": "^9.4.5",
     "@types/p-throttle": "^1.1.0",
     "@types/ws": "^4.0.0",

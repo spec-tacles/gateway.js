@@ -2,9 +2,9 @@ import * as WebSocket from 'ws';
 import * as os from 'os';
 import * as throttle from 'p-throttle';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
+import { Presence } from '@spectacles/types';
 
 import Client from './Client';
-
 import CloseEvent from '../util/CloseEvent';
 
 const { OP, Dispatch } = Constants;
@@ -17,10 +17,10 @@ try {
   // do nothing
 }
 
-const identify = throttle(async function (this: Connection) {
+const identify = throttle(async function (this: Connection, packet: Partial<Identify> = {}) {
   if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
 
-  await this.send(OP.IDENTIFY, {
+  await this.send(OP.IDENTIFY, Object.assign({
     token: this.client.token,
     properties: {
       $os: os.platform(),
@@ -31,10 +31,28 @@ const identify = throttle(async function (this: Connection) {
     large_threshold: 250,
     shard: [this.shard, this.client.gateway.shards],
     presence: {},
-  });
+  }, packet));
 }, 1, 5e3);
 
-export type Payload = { t?: string, s?: number, op: number, d: any };
+export interface Identify {
+  token: string,
+  properties: {
+    $os: string,
+    browser: string,
+    device: string,
+  },
+  compress: string,
+  large_threshold: number,
+  shard: [number, number],
+  presence: Partial<Presence>,
+}
+
+export interface Payload {
+  t?: string,
+  s?: number,
+  op: number,
+  d: any
+}
 
 /**
  * A Discord Gateway payload.
@@ -65,7 +83,7 @@ export default class Connection {
    * Send an identify packet.
    * @returns {Promise<undefined>}
    */
-  public identify: () => Promise<void>;
+  public identify: (pk?: Partial<Identify>) => Promise<void>;
 
   /**
    * The underlying websocket connection.
@@ -163,6 +181,8 @@ export default class Connection {
    */
   public async connect(): Promise<void> {
     if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
+    if (this._ws) throw new global.Error('Connection already exists');
+
     this._emit('connect');
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
@@ -198,11 +218,12 @@ export default class Connection {
   /**
    * Disconnect and reconnect to the gateway after a 1s timeout.
    * @param {?number} code The code to close the connection with, if any.
+   * @param {?number} delay The time (in ms) to delay between disconnect and connect
    * @returns {Promise<undefined>}
    */
-  public async reconnect(code?: number): Promise<void> {
+  public async reconnect(code?: number, delay: number = 1e3 + Math.random() - 0.5): Promise<void> {
     await this.disconnect(code);
-    await new Promise(r => setTimeout(r, 1e3 + Math.random() - 0.5));
+    await new Promise(r => setTimeout(r, delay));
     await this.connect();
   }
 
@@ -282,11 +303,38 @@ export default class Connection {
    * @param {?string} t The event to send; use when sending an OP 0.
    * @returns {Promise<undefined>}
    */
-  public send(op: number, d: any, t?: string): Promise<void> {
-    const data: { op: number, d: any, t?: string, s?: number } = { op, d };
-    if (op === OP.DISPATCH) {
-      data.t = t;
-      data.s = this._seq;
+  public send(pk: Buffer): Promise<void>;
+  public send(pk: Payload): Promise<void>;
+  public send(op: number | string, d: any): Promise<void>;
+  public send(op: number | Buffer | Payload | string, d?: any): Promise<void> {
+    if (Buffer.isBuffer(op)) {
+      return new Promise((resolve, reject) => {
+        this.ws.send(op, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
+
+    let data: Payload;
+    switch (typeof op) {
+      case 'object':
+        data = op as Payload;
+        break;
+      case 'string': {
+        data = {
+          op: OP.DISPATCH,
+          t: op as string,
+          s: this._seq,
+          d,
+        };
+        break;
+      }
+      case 'number':
+        data = { op, d } as Payload;
+        break;
+      default:
+        return Promise.reject(new global.Error(`Invalid op type "${typeof op}"`))
     }
 
     this._emit('send', data);

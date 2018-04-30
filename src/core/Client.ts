@@ -106,6 +106,9 @@ export default class Client extends EventEmitter {
     }
 
     await Promise.all(shards.map(shard => {
+      const existing = this.connections.get(shard);
+      if (existing) return existing.reconnect();
+
       const conn = new Connection(this, shard);
       this.connections.set(shard, conn);
       return conn.connect();
