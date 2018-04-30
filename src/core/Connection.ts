@@ -308,6 +308,8 @@ export default class Connection {
   public send(op: number | string, d: any): Promise<void>;
   public send(op: number | Buffer | Payload | string, d?: any): Promise<void> {
     if (Buffer.isBuffer(op)) {
+      this._emit('send', op);
+
       return new Promise((resolve, reject) => {
         this.ws.send(op, (err) => {
           if (err) reject(err);
@@ -355,7 +357,7 @@ export default class Connection {
    * @private
    */
   private async handleClose(code: number, reason: string): Promise<void> {
-    this.client.emit('close', new CloseEvent(code, reason));
+    this._emit('close', new CloseEvent(code, reason));
 
     this._seq = -1;
     if (this._heartbeater) {
