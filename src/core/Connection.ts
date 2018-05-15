@@ -86,26 +86,26 @@ export default class Connection {
   public identify: (pk?: Partial<Identify>) => Promise<void>;
 
   /**
-   * The underlying websocket connection.
-   * @type {?WebSocket}
-   * @private
-   */
-  private _ws?: WebSocket = undefined;
-
-  /**
    * The sequence of this connection.
    * @type {number}
    * @default [-1]
    * @private
    */
-  private _seq: number = -1;
+  public seq: number = -1;
 
   /**
    * The session identifier of this connection.
    * @type {?string}
    * @private
    */
-  private _session: string | null = null;
+  public session: string | null = null;
+
+  /**
+   * The underlying websocket connection.
+   * @type {?WebSocket}
+   * @private
+   */
+  private _ws?: WebSocket = undefined;
 
   /**
    * The heartbeater interval.
@@ -147,22 +147,6 @@ export default class Connection {
 
     this.send = throttle(this.send.bind(this), 120, 60);
     this.identify = identify;
-  }
-
-  /**
-   * The sequence of this connection.
-   * @returns {number}
-   */
-  public get seq(): number {
-    return this._seq;
-  }
-
-  /**
-   * The session identifier of this connection.
-   * @returns {?string}
-   */
-  public get session(): string | null {
-    return this._session;
   }
 
   /**
@@ -209,7 +193,7 @@ export default class Connection {
 
     if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close(code);
 
-    this._seq = -1;
+    this.seq = -1;
     if (this._heartbeater) clearInterval(this._heartbeater);
 
     await new Promise(r => this.ws.once('close', r));
@@ -261,8 +245,8 @@ export default class Connection {
 
     switch (decoded.op) {
       case OP.DISPATCH:
-        if (decoded.s && decoded.s > this._seq) this._seq = decoded.s;
-        if (decoded.t === Dispatch.READY) this._session = decoded.d.session_id;
+        if (decoded.s && decoded.s > this.seq) this.seq = decoded.s;
+        if (decoded.t === Dispatch.READY) this.session = decoded.d.session_id;
         this.client.emit(decoded.t, decoded.d);
         break;
       case OP.HEARTBEAT:
@@ -286,7 +270,7 @@ export default class Connection {
           }
         }, decoded.d.heartbeat_interval);
 
-        if (this._session) this.resume();
+        if (this.session) this.resume();
         else this.identify();
 
         break;
@@ -327,7 +311,7 @@ export default class Connection {
         data = {
           op: OP.DISPATCH,
           t: op as string,
-          s: this._seq,
+          s: this.seq,
           d,
         };
         break;
@@ -359,7 +343,7 @@ export default class Connection {
   private async handleClose(code: number, reason: string): Promise<void> {
     this._emit('close', new CloseEvent(code, reason));
 
-    this._seq = -1;
+    this.seq = -1;
     if (this._heartbeater) {
       clearInterval(this._heartbeater);
       this._heartbeater = undefined;
@@ -373,7 +357,7 @@ export default class Connection {
       case 4000: // unknown error (reconnect)
         break;
       default: // other errors (clear session and reconnect)
-        this._session = null;
+        this.session = null;
         break;
     }
 
