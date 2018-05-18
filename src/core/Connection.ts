@@ -1,6 +1,7 @@
 import * as WebSocket from 'ws';
 import * as os from 'os';
 import * as throttle from 'p-throttle';
+import { promisify } from 'util';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
 import { Presence } from '@spectacles/types';
 
@@ -9,6 +10,7 @@ import CloseEvent from '../util/CloseEvent';
 
 const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
+const wait = promisify(setTimeout);
 
 let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
 try {
@@ -19,6 +21,7 @@ try {
 
 const identify = throttle(async function (this: Connection, packet: Partial<Identify> = {}) {
   if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
+  if (this.session) this.resume();
 
   await this.send(OP.IDENTIFY, Object.assign({
     token: this.client.token,
@@ -80,7 +83,7 @@ export default class Connection {
   public readonly version: number = 6;
 
   /**
-   * Send an identify packet.
+   * Send an identify packet. Will attempt to resume if a session is available.
    * @returns {Promise<undefined>}
    */
   public identify: (pk?: Partial<Identify>) => Promise<void>;
@@ -91,7 +94,7 @@ export default class Connection {
    * @default [-1]
    * @private
    */
-  public seq: number = -1;
+  public seq: number = 0;
 
   /**
    * The session identifier of this connection.
@@ -165,14 +168,12 @@ export default class Connection {
    */
   public async connect(): Promise<void> {
     if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
-    if (this._ws) throw new global.Error('Connection already exists');
+    if (this._ws) this.disconnect();
 
     this._emit('connect');
 
     this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
-    this._ws.on('message', this.receive);
-    this._ws.on('close', this.handleClose);
-    this._ws.on('error', this.handleError);
+    this._registerWSListeners();
 
     this._acked = true;
     await new Promise(r => this.ws.once('open', r));
@@ -184,19 +185,13 @@ export default class Connection {
    * @returns {Promise<undefined>}
    */
   public async disconnect(code?: number): Promise<void> {
-    if (this.ws.readyState === WebSocket.CLOSED) return Promise.resolve();
+    if (!this._ws || [WebSocket.CLOSED, WebSocket.CLOSING].includes(this._ws.readyState)) return Promise.resolve();
     this._emit('disconnect');
+    this._reset();
 
-    this.ws.removeListener('message', this.receive);
-    this.ws.removeListener('close', this.handleClose);
-    this.ws.removeListener('error', this.handleError);
-
-    if (this.ws.readyState !== WebSocket.CLOSING) this.ws.close(code);
-
-    this.seq = -1;
-    if (this._heartbeater) clearInterval(this._heartbeater);
-
+    this.ws.close(code);
     await new Promise(r => this.ws.once('close', r));
+
   }
 
   /**
@@ -207,7 +202,7 @@ export default class Connection {
    */
   public async reconnect(code?: number, delay: number = 1e3 + Math.random() - 0.5): Promise<void> {
     await this.disconnect(code);
-    await new Promise(r => setTimeout(r, delay));
+    await wait(delay);
     await this.connect();
   }
 
@@ -222,7 +217,7 @@ export default class Connection {
     return this.send(OP.RESUME, {
       token: this.client.token,
       seq: this.seq,
-      session: this.session,
+      session_id: this.session,
     });
   }
 
@@ -240,14 +235,14 @@ export default class Connection {
    * @returns {undefined}
    */
   public receive(data: WebSocket.Data): void {
-    const decoded = decode(data);
+    const decoded: Payload = decode(data);
     this._emit('receive', decoded);
 
     switch (decoded.op) {
       case OP.DISPATCH:
         if (decoded.s && decoded.s > this.seq) this.seq = decoded.s;
         if (decoded.t === Dispatch.READY) this.session = decoded.d.session_id;
-        this.client.emit(decoded.t, decoded.d);
+        if (decoded.t) this.client.emit(decoded.t, decoded.d);
         break;
       case OP.HEARTBEAT:
         this.heartbeat();
@@ -256,11 +251,11 @@ export default class Connection {
         this.reconnect();
         break;
       case OP.INVALID_SESSION:
-        if (decoded.d) this.resume();
-        else this.reconnect();
+        if (!decoded.d) this.session = null;
+        wait(Math.floor(Math.random() * 5) + 1).then(() => this.identify());
         break;
       case OP.HELLO:
-        if (this._heartbeater) clearInterval(this._heartbeater);
+        this._clearHeartbeater();
         this._heartbeater = setInterval(() => {
           if (this._acked) {
             this.heartbeat();
@@ -270,9 +265,7 @@ export default class Connection {
           }
         }, decoded.d.heartbeat_interval);
 
-        if (this.session) this.resume();
-        else this.identify();
-
+        this.identify();
         break;
       case OP.HEARTBEAT_ACK:
         this._acked = true;
@@ -293,13 +286,7 @@ export default class Connection {
   public send(op: number | Buffer | Payload | string, d?: any): Promise<void> {
     if (Buffer.isBuffer(op)) {
       this._emit('send', op);
-
-      return new Promise((resolve, reject) => {
-        this.ws.send(op, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
+      return this._send(op);
     }
 
     let data: Payload;
@@ -324,9 +311,12 @@ export default class Connection {
     }
 
     this._emit('send', data);
+    return this._send(encode(data));
+  }
 
+  private _send(data: Buffer): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws.send(encode(data), (err) => {
+      this.ws.send(data, (err) => {
         if (err) reject(err);
         else resolve();
       });
@@ -341,13 +331,10 @@ export default class Connection {
    * @private
    */
   private async handleClose(code: number, reason: string): Promise<void> {
+    this._ws = undefined;
     this._emit('close', new CloseEvent(code, reason));
 
-    this.seq = -1;
-    if (this._heartbeater) {
-      clearInterval(this._heartbeater);
-      this._heartbeater = undefined;
-    }
+    this._reset();
 
     switch (code) {
       case 4004:
@@ -373,6 +360,35 @@ export default class Connection {
   private async handleError(err: any) {
     this._emit('error', err);
     await this.reconnect();
+  }
+
+  private _registerWSListeners() {
+    if (!this._ws) return;
+
+    if (!this._ws.listeners('message').includes(this.receive)) this._ws.on('message', this.receive);
+    if (!this._ws.listeners('close').includes(this.handleClose)) this._ws.on('close', this.handleClose);
+    if (!this._ws.listeners('error').includes(this.handleError)) this._ws.on('error', this.handleError);
+  }
+
+  private _reset() {
+    this._clearWSListeners();
+    this._clearHeartbeater();
+    this.seq = 0;
+  }
+
+  private _clearWSListeners() {
+    if (!this._ws) return;
+
+    this._ws.removeListener('message', this.receive);
+    this._ws.removeListener('close', this.handleClose);
+    this._ws.removeListener('error', this.handleError);
+  }
+
+  private _clearHeartbeater() {
+    if (this._heartbeater) {
+      clearInterval(this._heartbeater);
+      this._heartbeater = undefined;
+    }
   }
 
   private _emit(event: string, ...data: any[]) {
