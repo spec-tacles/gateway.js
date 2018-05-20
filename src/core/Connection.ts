@@ -242,7 +242,7 @@ export default class Connection {
       case OP.DISPATCH:
         if (decoded.s && decoded.s > this.seq) this.seq = decoded.s;
         if (decoded.t === Dispatch.READY) this.session = decoded.d.session_id;
-        if (decoded.t) this.client.emit(decoded.t, decoded.d);
+        if (decoded.t) this._emit(decoded.t, decoded.d);
         break;
       case OP.HEARTBEAT:
         this.heartbeat();
