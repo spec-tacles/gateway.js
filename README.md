@@ -5,16 +5,16 @@ Spawns shards and manages a bot's lifetime on the Discord WebSocket gateway.
 ## Getting started
 
 ```js
-const { Client } = require('@spectacles/gateway');
-const client = new Client('a token');
-client.spawn();
+const { Cluster } = require('@spectacles/gateway');
+const cluster = new Cluster('a token');
+cluster.spawn();
 ```
 
 You've just spawned the recommended number of shards.
 
 ## Events
 
-The client emits events from its shards in the form `[event name], [shard id], [data]`.  Available events:
+The shard emits events in the form `[event name], [data]`. The cluster emits events in the form `[event name], [data], [shard]`. When using a cluster, events will only be emitted on shards that have event listeners. Available events:
 
 - `close` - WebSocket closures (follows the CloseEvent API)
 - `error` - proxied from the underlying WebSocket connection
@@ -27,22 +27,21 @@ The client emits events from its shards in the form `[event name], [shard id], [
 
 ## Properties
 
-### `Client`
+### `Cluster`
 
 - `token: string` - your token
-- `reconnect: boolean = true` - whether to attempt automatic reconnects
-- `connections: Map<number, Connection>` - a map of your shard connections, keyed by shard id
-- `gateway?: { url: string, shards: number }` - information about the gateway to connect to and how many shards to use in total
-- _`constructor(token: string, options: { reconnect?: boolean } = {})`_
-- `fetchGateway(force = false): Promise<{ url: string, shards: number }>` - fetch gateway info from discord or from cache unless forced
+- `shards: Map<number, Shard>` - a map of your shard connections, keyed by shard id
+- _`constructor(token: string)`_
 - `spawn(shards: number | number[])` - spawn `shards` number of shards (if number), or spawn the specified shard IDs (if array)
 
-### `Connection`
+### `Shard`
 
+- *static* `gateway?: { url: string, shards: number }` - information about the gateway to connect to and how many shards to use in total
+- *static* `fetchGateway(force = false): Promise<{ url: string, shards: number }>` - fetch gateway info from discord or from cache unless forced
 - `client: Client` - the client of this shard
 - `shard: number` - this shard id
 - `version: 6` - the gateway version to use (locked at 6)
-- _`constructor(client: Client, shard: number)`_
+- _`constructor(token: string, shard: number)`_
 - *readonly* `seq: number` - the current sequence
 - *readonly* `session?: string` - the current session identifier
 - *readonly* `ws: WebSocket` - the raw websocket

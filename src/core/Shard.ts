@@ -1,30 +1,23 @@
 import * as WebSocket from 'ws';
+import * as https from 'https';
 import * as os from 'os';
 import * as throttle from 'p-throttle';
 import { promisify } from 'util';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
 import { Presence } from '@spectacles/types';
 
-import Client from './Client';
 import CloseEvent from '../util/CloseEvent';
+import { EventEmitter } from 'events';
 
 const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
 const wait = promisify(setTimeout);
 
-let erlpack: { pack: (d: any) => Buffer, unpack: (d: Buffer | Uint8Array) => any } | void;
-try {
-  erlpack = require('erlpack');
-} catch (e) {
-  // do nothing
-}
-
-const identify = throttle(async function (this: Connection, packet: Partial<Identify> = {}) {
-  if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
+const identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
   if (this.session) this.resume();
 
   await this.send(OP.IDENTIFY, Object.assign({
-    token: this.client.token,
+    token: this.token,
     properties: {
       $os: os.platform(),
       $browser: 'spectacles',
@@ -32,7 +25,7 @@ const identify = throttle(async function (this: Connection, packet: Partial<Iden
     },
     compress: encoding === 'etf',
     large_threshold: 250,
-    shard: [this.shard, this.client.gateway.shards],
+    shard: [this.id, (await this.fetchGateway()).shards],
     presence: {},
   }, packet));
 }, 1, 5e3);
@@ -57,6 +50,12 @@ export interface Payload {
   d: any
 }
 
+export type Gateway = { url: string, shards: number };
+
+export interface Shardable {
+  token: string;
+}
+
 /**
  * A Discord Gateway payload.
  * @typedef Payload
@@ -70,9 +69,40 @@ export interface Payload {
 /**
  * A connection to the Discord Gateway.
  */
-export default class Connection {
-  public readonly client: Client;
-  public readonly shard: number;
+export default class Shard extends EventEmitter implements Shardable {
+  public static gateway?: Gateway;
+
+  public static async fetchGateway(token: string, force = false) {
+    if (this.gateway && !force) return this.gateway;
+
+    return this.gateway = await new Promise<Gateway>((resolve, reject) => {
+      https.get({
+        host: 'discordapp.com',
+        path: '/api/v6/gateway/bot',
+        headers: {
+          Authorization: `Bot ${token}`,
+        },
+      }, (res) => {
+        if (res.statusCode !== 200) return reject(res);
+
+        let data = '';
+        res
+          .setEncoding('utf8')
+          .on('data', chunk => data += chunk)
+          .once('end', () => {
+            try {
+              return resolve(JSON.parse(data));
+            } catch (e) {
+              return reject(e);
+            }
+          })
+          .once('error', reject);
+      });
+    });
+  }
+
+  // public readonly client: Client;
+  public readonly id: number;
 
   /**
    * The API version to use.
@@ -105,10 +135,11 @@ export default class Connection {
 
   /**
    * The underlying websocket connection.
-   * @type {?WebSocket}
-   * @private
+   * @type {WebSocket}
    */
-  private _ws?: WebSocket = undefined;
+  public ws!: WebSocket;
+
+  public token: string;
 
   /**
    * The heartbeater interval.
@@ -126,23 +157,19 @@ export default class Connection {
 
   /**
    * @constructor
-   * @param {Client} client The client
+   * @param {string} token The token to connect with
    * @param {number} shard The shard of this connection
    */
-  constructor(client: Client, shard: number) {
-    /**
-     * The connection manager.
-     * @type {Client}
-     * @readonly
-     */
-    this.client = client;
+  constructor(token: string, id: number) {
+    super();
+    this.token = token;
 
     /**
      * The shard that this connection represents.
      * @type {number}
      * @readonly
      */
-    this.shard = shard;
+    this.id = id;
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
@@ -150,16 +177,8 @@ export default class Connection {
 
     this.send = throttle(this.send.bind(this), 120, 60);
     this.identify = identify;
-  }
 
-  /**
-   * The underlying websocket connection to the gateway.
-   * @returns {WebSocket}
-   * @throws {Error} Throws if there is no connection available.
-   */
-  public get ws(): WebSocket {
-    if (!this._ws) throw new Error(Codes.NO_WEBSOCKET);
-    return this._ws;
+    this.connect();
   }
 
   /**
@@ -167,12 +186,11 @@ export default class Connection {
    * @returns {Promise<undefined>}
    */
   public async connect(): Promise<void> {
-    if (!this.client.gateway) throw new Error(Codes.NO_GATEWAY);
-    if (this._ws) this.disconnect();
+    if (this.ws.readyState === WebSocket.OPEN) this.disconnect();
 
-    this._emit('connect');
+    this.emit('connect');
 
-    this._ws = new WebSocket(`${this.client.gateway.url}?v=${this.version}&encoding=${encoding}`);
+    this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}`);
     this._registerWSListeners();
 
     this._acked = true;
@@ -185,8 +203,8 @@ export default class Connection {
    * @returns {Promise<undefined>}
    */
   public async disconnect(code?: number): Promise<void> {
-    if (!this._ws || [WebSocket.CLOSED, WebSocket.CLOSING].includes(this._ws.readyState)) return Promise.resolve();
-    this._emit('disconnect');
+    if ([WebSocket.CLOSED, WebSocket.CLOSING].includes(this.ws.readyState)) return Promise.resolve();
+    this.emit('disconnect');
     this._reset();
 
     this.ws.close(code);
@@ -215,7 +233,7 @@ export default class Connection {
     if (!this.session) throw new Error(Codes.NO_SESSION);
 
     return this.send(OP.RESUME, {
-      token: this.client.token,
+      token: this.token,
       seq: this.seq,
       session_id: this.session,
     });
@@ -236,13 +254,13 @@ export default class Connection {
    */
   public receive(data: WebSocket.Data): void {
     const decoded: Payload = decode(data);
-    this._emit('receive', decoded);
+    this.emit('receive', decoded);
 
     switch (decoded.op) {
       case OP.DISPATCH:
         if (decoded.s && decoded.s > this.seq) this.seq = decoded.s;
         if (decoded.t === Dispatch.READY) this.session = decoded.d.session_id;
-        if (decoded.t) this._emit(decoded.t, decoded.d);
+        if (decoded.t) this.emit(decoded.t, decoded.d);
         break;
       case OP.HEARTBEAT:
         this.heartbeat();
@@ -285,7 +303,7 @@ export default class Connection {
   public send(op: number | string, d: any): Promise<void>;
   public send(op: number | Buffer | Payload | string, d?: any): Promise<void> {
     if (Buffer.isBuffer(op)) {
-      this._emit('send', op);
+      this.emit('send', op);
       return this._send(op);
     }
 
@@ -310,8 +328,12 @@ export default class Connection {
         return Promise.reject(new global.Error(`Invalid op type "${typeof op}"`))
     }
 
-    this._emit('send', data);
+    this.emit('send', data);
     return this._send(encode(data));
+  }
+
+  public fetchGateway(force?: boolean): Promise<Gateway> {
+    return Shard.fetchGateway(this.token, force);
   }
 
   private _send(data: Buffer): Promise<void> {
@@ -331,8 +353,7 @@ export default class Connection {
    * @private
    */
   private async handleClose(code: number, reason: string): Promise<void> {
-    this._ws = undefined;
-    this._emit('close', new CloseEvent(code, reason));
+    this.emit('close', new CloseEvent(code, reason));
 
     this._reset();
 
@@ -348,7 +369,7 @@ export default class Connection {
         break;
     }
 
-    if (this.client.reconnect) await this.reconnect();
+    await this.reconnect();
   }
 
   /**
@@ -358,16 +379,14 @@ export default class Connection {
    * @private
    */
   private async handleError(err: any) {
-    this._emit('error', err);
+    this.emit('error', err);
     await this.reconnect();
   }
 
   private _registerWSListeners() {
-    if (!this._ws) return;
-
-    if (!this._ws.listeners('message').includes(this.receive)) this._ws.on('message', this.receive);
-    if (!this._ws.listeners('close').includes(this.handleClose)) this._ws.on('close', this.handleClose);
-    if (!this._ws.listeners('error').includes(this.handleError)) this._ws.on('error', this.handleError);
+    if (!this.ws.listeners('message').includes(this.receive)) this.ws.on('message', this.receive);
+    if (!this.ws.listeners('close').includes(this.handleClose)) this.ws.on('close', this.handleClose);
+    if (!this.ws.listeners('error').includes(this.handleError)) this.ws.on('error', this.handleError);
   }
 
   private _reset() {
@@ -377,11 +396,9 @@ export default class Connection {
   }
 
   private _clearWSListeners() {
-    if (!this._ws) return;
-
-    this._ws.removeListener('message', this.receive);
-    this._ws.removeListener('close', this.handleClose);
-    this._ws.removeListener('error', this.handleError);
+    this.ws.removeListener('message', this.receive);
+    this.ws.removeListener('close', this.handleClose);
+    this.ws.removeListener('error', this.handleError);
   }
 
   private _clearHeartbeater() {
@@ -389,9 +406,5 @@ export default class Connection {
       clearInterval(this._heartbeater);
       this._heartbeater = undefined;
     }
-  }
-
-  private _emit(event: string, ...data: any[]) {
-    return this.client.emit(event, this.shard, ...data);
   }
 }
