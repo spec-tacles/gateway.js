@@ -9,6 +9,7 @@ import { Presence } from '@spectacles/types';
 import CloseEvent from '../util/CloseEvent';
 import { EventEmitter } from 'events';
 
+const { version } = require('../../package.json');
 const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
 const wait = promisify(setTimeout);
@@ -81,6 +82,8 @@ export default class Shard extends EventEmitter implements Shardable {
         path: '/api/v6/gateway/bot',
         headers: {
           Authorization: `Bot ${token}`,
+          Accept: 'application/json',
+          'User-Agent': `DiscordBot (https://github.com/spec-tacles/gateway, ${version})`,
         },
       }, (res) => {
         if (res.statusCode !== 200) return reject(res);
@@ -90,6 +93,8 @@ export default class Shard extends EventEmitter implements Shardable {
           .setEncoding('utf8')
           .on('data', chunk => data += chunk)
           .once('end', () => {
+            res.removeAllListeners();
+
             try {
               return resolve(JSON.parse(data));
             } catch (e) {
