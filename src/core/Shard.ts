@@ -190,16 +190,19 @@ export default class Shard extends EventEmitter implements Shardable {
    * Connect to the gateway.
    * @returns {Promise<undefined>}
    */
-  public async connect(): Promise<void> {
-    if (this.ws.readyState === WebSocket.OPEN) this.disconnect();
+  public connect(): Promise<void> {
+    const connect = async (r: () => void) => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) await this.disconnect();
+      this.emit('connect');
 
-    this.emit('connect');
+      this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}`);
+      this._registerWSListeners();
 
-    this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}`);
-    this._registerWSListeners();
+      this._acked = true;
+      this.ws.once('open', r);
+    };
 
-    this._acked = true;
-    await new Promise(r => this.ws.once('open', r));
+    return new Promise(r => setImmediate(connect, r));
   }
 
   /**
@@ -214,7 +217,6 @@ export default class Shard extends EventEmitter implements Shardable {
 
     this.ws.close(code);
     await new Promise(r => this.ws.once('close', r));
-
   }
 
   /**
@@ -359,7 +361,6 @@ export default class Shard extends EventEmitter implements Shardable {
    */
   private async handleClose(code: number, reason: string): Promise<void> {
     this.emit('close', new CloseEvent(code, reason));
-
     this._reset();
 
     switch (code) {
