@@ -24,6 +24,8 @@ The shard emits events in the form `[event name], [data]`. The cluster emits eve
 - `disconnect` - explicit disconnections from the WebSocket (i.e. when the client requests a connection closure)
 - `[Discord gateway event]` - OP 0 data, keyed by `t` (only `d` is emitted)
 
+For details about Discord Gateway events, check out [their documentation](https://discordapp.com/developers/docs/topics/gateway#commands-and-events).
+
 
 ## Properties
 
