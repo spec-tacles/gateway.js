@@ -40,6 +40,6 @@
     "gulp-typescript": "^4.0.1",
     "jsdoc": "^3.5.5",
     "merge-stream": "^1.0.1",
-    "typescript": "^2.7.1"
+    "typescript": "^3.1.6"
   }
 }
