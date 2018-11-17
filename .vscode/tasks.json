@@ -4,9 +4,13 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "taskName": "gulp",
-      "type": "shell",
-      "command": "gulp"
+      "label": "gulp",
+      "type": "gulp",
+      "task": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }
