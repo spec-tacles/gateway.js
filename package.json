@@ -19,18 +19,21 @@
   "author": "Will Nelson <nelson.will@live.com>",
   "license": "MIT",
   "dependencies": {
-    "@spectacles/util": "^0.2.0",
+    "@spectacles/util": "^0.2.3",
     "p-throttle": "^1.1.0",
+    "pako": "^1.0.6",
     "ws": "^4.0.0"
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",
-    "utf-8-validate": "^4.0.0"
+    "utf-8-validate": "^4.0.0",
+    "zlib-sync": "^0.1.4"
   },
   "devDependencies": {
     "@spectacles/types": "^0.1.2",
-    "@types/node": "^9.4.5",
+    "@types/node": "^9.6.39",
     "@types/p-throttle": "^1.1.0",
+    "@types/pako": "^1.0.0",
     "@types/ws": "^4.0.0",
     "del": "^3.0.0",
     "docdash": "^0.4.0",

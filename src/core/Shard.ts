@@ -1,6 +1,7 @@
 import * as WebSocket from 'ws';
 import * as https from 'https';
 import * as os from 'os';
+import pako = require('pako');
 import * as throttle from 'p-throttle';
 import { promisify } from 'util';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
@@ -9,27 +10,17 @@ import { Presence } from '@spectacles/types';
 import CloseEvent from '../util/CloseEvent';
 import { EventEmitter } from 'events';
 
+let zlib: typeof pako;
+try {
+  zlib = require('zlib-sync');
+} catch {
+  zlib = pako;
+}
+
 const { version } = require('../../package.json');
 const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
 const wait = promisify(setTimeout);
-
-const identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
-  if (this.session) this.resume();
-
-  await this.send(OP.IDENTIFY, Object.assign({
-    token: this.token,
-    properties: {
-      $os: os.platform(),
-      $browser: 'spectacles',
-      $device: 'spectacles',
-    },
-    compress: encoding === 'etf',
-    large_threshold: 250,
-    shard: [this.id, (await this.fetchGateway()).shards],
-    presence: {},
-  }, packet));
-}, 1, 5e3);
 
 export interface Identify {
   token: string,
@@ -71,6 +62,8 @@ export interface Shardable {
  * A connection to the Discord Gateway.
  */
 export default class Shard extends EventEmitter implements Shardable {
+  public static readonly ZLIB_SUFFIX = new Uint8Array([0x00, 0x00, 0xff, 0xff]);
+
   public static gateway?: Gateway;
 
   public static async fetchGateway(token: string, force = false) {
@@ -105,6 +98,23 @@ export default class Shard extends EventEmitter implements Shardable {
       });
     });
   }
+
+  public static identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
+    if (this.session) this.resume();
+
+    await this.send(OP.IDENTIFY, Object.assign({
+      token: this.token,
+      properties: {
+        $os: os.platform(),
+        $browser: 'spectacles',
+        $device: 'spectacles',
+      },
+      compress: false,
+      large_threshold: 250,
+      shard: [this.id, (await this.fetchGateway()).shards],
+      presence: {},
+    }, packet));
+  }, 1, 5e3);
 
   /**
    * The API version to use.
@@ -141,6 +151,8 @@ export default class Shard extends EventEmitter implements Shardable {
    */
   public ws!: WebSocket;
 
+  public inflate: pako.Inflate = new zlib.Inflate();
+
   /**
    * The heartbeater interval.
    * @type {Timer}
@@ -168,7 +180,7 @@ export default class Shard extends EventEmitter implements Shardable {
     this.handleError = this.handleError.bind(this);
 
     this.send = throttle(this.send.bind(this), 120, 60);
-    this.identify = identify;
+    this.identify = Shard.identify;
 
     this.connect();
   }
@@ -182,7 +194,7 @@ export default class Shard extends EventEmitter implements Shardable {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) await this.disconnect();
       this.emit('connect');
 
-      this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}`);
+      this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
       this._registerWSListeners();
 
       this._acked = true;
@@ -247,7 +259,21 @@ export default class Shard extends EventEmitter implements Shardable {
    * @returns {undefined}
    */
   public receive(data: WebSocket.Data): void {
-    const decoded: Payload = decode(data);
+    let conv: Uint8Array;
+    if (typeof data === 'string') conv = new Uint8Array(Buffer.from(data));
+    else if (Array.isArray(data)) conv = new Uint8Array(Buffer.concat(data));
+    else conv = new Uint8Array(data);
+
+    const flush = conv
+      .slice(conv.length - 4, conv.length)
+      .every((e, i) => e === Shard.ZLIB_SUFFIX[i]);
+    this.inflate.push(conv, flush ? (zlib as any).Z_SYNC_FLUSH : (zlib as any).Z_NO_FLUSH);
+    if (!flush) return;
+
+    let result: string | number[] | Uint8Array = this.inflate.result;
+    if (Array.isArray(result)) result = new Uint8Array(result);
+
+    const decoded: Payload = decode(result);
     this.emit('receive', decoded);
 
     switch (decoded.op) {
