@@ -50,14 +50,8 @@ export default class Cluster extends EventEmitter implements Shardable {
    * @param {number|number[]} [shards=this.gateway.shards] The shards to spawn
    */
   public async spawn(shards?: number | number[]): Promise<void> {
-    const gateway = await Shard.fetchGateway(this.token);
-
-    if (shards === undefined) shards = gateway.shards;
-    if (typeof shards === 'number') {
-      const count = shards;
-      shards = Array(shards);
-      for (let i = 0; i < count; i++) shards[i] = i;
-    }
+    if (shards === undefined) ({ shards } = await Shard.fetchGateway(this.token));
+    if (typeof shards === 'number') shards = Array.from({ length: shards }, (_, i) => i);
 
     for (const shard of shards) {
       const existing = this.shards.get(shard);
