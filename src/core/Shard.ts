@@ -106,9 +106,6 @@ export default class Shard extends EventEmitter implements Shardable {
     });
   }
 
-  // public readonly client: Client;
-  public readonly id: number;
-
   /**
    * The API version to use.
    * @type {number}
@@ -144,8 +141,6 @@ export default class Shard extends EventEmitter implements Shardable {
    */
   public ws!: WebSocket;
 
-  public token: string;
-
   /**
    * The heartbeater interval.
    * @type {Timer}
@@ -165,16 +160,8 @@ export default class Shard extends EventEmitter implements Shardable {
    * @param {string} token The token to connect with
    * @param {number} shard The shard of this connection
    */
-  constructor(token: string, id: number) {
+  constructor(public token: string, public readonly id: number) {
     super();
-    this.token = token;
-
-    /**
-     * The shard that this connection represents.
-     * @type {number}
-     * @readonly
-     */
-    this.id = id;
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
