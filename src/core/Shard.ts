@@ -22,7 +22,7 @@ const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
 const wait = promisify(setTimeout);
 
-export interface Identify {
+export type Identify = {
   token: string,
   properties: {
     $os: string,
@@ -35,14 +35,22 @@ export interface Identify {
   presence: Partial<Presence>,
 }
 
-export interface Payload {
+export type Payload = {
   t?: string,
   s?: number,
   op: number,
   d: any
 }
 
-export type Gateway = { url: string, shards: number };
+export type Gateway = {
+  url: string,
+  shards: number,
+  session_start_limit: {
+    total: number,
+    remaining: number,
+    reset_after: number,
+  },
+};
 
 export interface Shardable {
   token: string;
@@ -66,7 +74,7 @@ export default class Shard extends EventEmitter implements Shardable {
 
   public static gateway?: Gateway;
 
-  public static async fetchGateway(token: string, force = false) {
+  public static async fetchGateway(token: string, force = false): Promise<Gateway> {
     if (this.gateway && !force) return this.gateway;
 
     return this.gateway = await new Promise<Gateway>((resolve, reject) => {
@@ -100,7 +108,12 @@ export default class Shard extends EventEmitter implements Shardable {
   }
 
   public static identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
-    if (this.session) this.resume();
+    if (this.session) return this.resume();
+
+    const gateway = await this.fetchGateway(true);
+    if (gateway.session_start_limit.remaining === 0) {
+      await wait(gateway.session_start_limit.reset_after - Date.now());
+    }
 
     await this.send(OP.IDENTIFY, Object.assign({
       token: this.token,
@@ -111,7 +124,7 @@ export default class Shard extends EventEmitter implements Shardable {
       },
       compress: false,
       large_threshold: 250,
-      shard: [this.id, (await this.fetchGateway()).shards],
+      shard: [this.id, gateway.shards],
       presence: {},
     }, packet));
   }, 1, 5e3);
