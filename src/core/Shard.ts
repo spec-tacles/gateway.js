@@ -394,11 +394,6 @@ export default class Shard extends EventEmitter implements Shardable {
       case 4010:
       case 4011: // unrecoverable errors (disconnect)
         return;
-      case 4000: // unknown error (reconnect)
-        break;
-      default: // other errors (clear session and reconnect)
-        this.session = null;
-        break;
     }
 
     await this.reconnect();
