@@ -20,9 +20,9 @@
   "license": "MIT",
   "dependencies": {
     "@spectacles/util": "^0.2.3",
-    "p-throttle": "^1.1.0",
-    "pako": "^1.0.6",
-    "ws": "^4.0.0"
+    "p-throttle": "^2.1.0",
+    "pako": "^1.0.7",
+    "ws": "^4.1.0"
   },
   "optionalDependencies": {
     "bufferutil": "^3.0.2",
@@ -30,19 +30,18 @@
     "zlib-sync": "^0.1.4"
   },
   "devDependencies": {
-    "@spectacles/types": "^0.1.2",
-    "@types/node": "^9.6.39",
-    "@types/p-throttle": "^1.1.0",
+    "@spectacles/types": "^0.1.4",
+    "@types/node": "^9.6.41",
     "@types/pako": "^1.0.0",
-    "@types/ws": "^4.0.0",
+    "@types/ws": "^4.0.2",
     "del": "^3.0.0",
     "docdash": "^0.4.0",
     "env-cmd": "^8.0.2",
     "gulp": "^4.0.0",
-    "gulp-sourcemaps": "^2.6.1",
-    "gulp-typescript": "^4.0.1",
+    "gulp-sourcemaps": "^2.6.4",
+    "gulp-typescript": "^4.0.2",
     "jsdoc": "^3.5.5",
     "merge-stream": "^1.0.1",
-    "typescript": "^3.1.6"
+    "typescript": "^3.2.2"
   }
 }

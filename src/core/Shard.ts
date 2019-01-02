@@ -2,7 +2,7 @@ import * as WebSocket from 'ws';
 import * as https from 'https';
 import * as os from 'os';
 import pako = require('pako');
-import * as throttle from 'p-throttle';
+import throttle from 'p-throttle';
 import { promisify } from 'util';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
 import { Presence } from '@spectacles/types';
@@ -192,7 +192,7 @@ export default class Shard extends EventEmitter implements Shardable {
     this.handleClose = this.handleClose.bind(this);
     this.handleError = this.handleError.bind(this);
 
-    this.send = throttle(this.send.bind(this), 120, 60);
+    this.send = throttle(this.send.bind(this), 120, 60) as any; // ts complains about this for some reason
     this.identify = Shard.identify;
 
     this.connect();
