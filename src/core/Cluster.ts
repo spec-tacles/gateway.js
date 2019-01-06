@@ -47,16 +47,17 @@ export default class Cluster extends EventEmitter implements Shardable {
 
   /**
    * Spawn shards.
-   * @param {number|number[]} [shards=this.gateway.shards] The shards to spawn
+   * @param {number} [min=0] The lowest shard ID to spawn
+   * @param {number} [max=Infinity] The highest shard ID to spawn, limited to the shard count from Shard.fetchGateway
    */
-  public async spawn(shards?: number | number[]): Promise<void> {
-    if (shards === undefined) ({ shards } = await Shard.fetchGateway(this.token));
-    if (typeof shards === 'number') shards = Array.from({ length: shards }, (_, i) => i);
+  public async spawn(min: number = 0, max: number = Infinity): Promise<void> {
+    const { shards } = await Shard.fetchGateway(this.token);
+    if (max > shards) max = shards;
 
-    for (const shard of shards) {
-      const existing = this.shards.get(shard);
+    for (let id = min; id < max; id++) {
+      const existing = this.shards.get(id);
       if (existing) existing.reconnect();
-      else this.shards.set(shard, new ClusterableShard(this, shard));
+      else this.shards.set(id, new ClusterableShard(this, id));
     }
   }
 }
