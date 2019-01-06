@@ -17,7 +17,7 @@ try {
   zlib = pako;
 }
 
-const { version } = require('../../package.json');
+const { version, repository } = require('../../package.json');
 const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
 const wait = promisify(setTimeout);
@@ -84,7 +84,7 @@ export default class Shard extends EventEmitter implements Shardable {
         headers: {
           Authorization: `Bot ${token}`,
           Accept: 'application/json',
-          'User-Agent': `DiscordBot (https://github.com/spec-tacles/gateway, ${version})`,
+          'User-Agent': `DiscordBot (${repository.url}, ${version})`,
         },
       }, (res) => {
         if (res.statusCode !== 200) return reject(res);
