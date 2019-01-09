@@ -3,7 +3,7 @@ import Cluster from './Cluster';
 
 export default class ClusterableShard extends Shard {
   constructor(public cluster: Cluster, id: number) {
-    super(cluster.token, id);
+    super(cluster.gateway, id);
   }
 
   public emit(name: string | symbol, ...args: any[]) {

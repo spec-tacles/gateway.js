@@ -1,11 +1,13 @@
-import Cluster from './core/Cluster';
-import ClusterableShard from './core/ClusterableShard';
-import Shard from './core/Shard';
+import Cluster from './Cluster';
+import ClusterableShard from './ClusterableShard';
+import Gateway from './Gateway';
+import Shard from './Shard';
 
 export default Cluster;
 
 export {
   Cluster,
   ClusterableShard,
+  Gateway,
   Shard,
 };

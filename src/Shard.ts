@@ -7,7 +7,8 @@ import { promisify } from 'util';
 import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
 import { Presence } from '@spectacles/types';
 
-import CloseEvent from '../util/CloseEvent';
+import Gateway from './Gateway';
+import CloseEvent from './util/CloseEvent';
 import { EventEmitter } from 'events';
 
 let zlib: typeof pako;
@@ -42,20 +43,6 @@ export type Payload = {
   d: any
 }
 
-export type Gateway = {
-  url: string,
-  shards: number,
-  session_start_limit: {
-    total: number,
-    remaining: number,
-    reset_after: number,
-  },
-};
-
-export interface Shardable {
-  token: string;
-}
-
 /**
  * A Discord Gateway payload.
  * @typedef Payload
@@ -69,54 +56,18 @@ export interface Shardable {
 /**
  * A connection to the Discord Gateway.
  */
-export default class Shard extends EventEmitter implements Shardable {
+export default class Shard extends EventEmitter {
   public static readonly ZLIB_SUFFIX = new Uint8Array([0x00, 0x00, 0xff, 0xff]);
-
-  public static gateway?: Gateway;
-
-  public static async fetchGateway(token: string, force = false): Promise<Gateway> {
-    if (this.gateway && !force) return this.gateway;
-
-    return this.gateway = await new Promise<Gateway>((resolve, reject) => {
-      https.get({
-        host: 'discordapp.com',
-        path: '/api/v6/gateway/bot',
-        headers: {
-          Authorization: `Bot ${token}`,
-          Accept: 'application/json',
-          'User-Agent': `DiscordBot (${repository.url}, ${version})`,
-        },
-      }, (res) => {
-        if (res.statusCode !== 200) return reject(res);
-
-        let data = '';
-        res
-          .setEncoding('utf8')
-          .on('data', chunk => data += chunk)
-          .once('end', () => {
-            res.removeAllListeners();
-
-            try {
-              return resolve(JSON.parse(data));
-            } catch (e) {
-              return reject(e);
-            }
-          })
-          .once('error', reject);
-      });
-    });
-  }
 
   public static identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
     if (this.session) return this.resume();
 
-    const gateway = await this.fetchGateway(true);
-    if (gateway.session_start_limit.remaining === 0) {
-      await wait(gateway.session_start_limit.reset_after - Date.now());
+    if (this.gateway.sessionStartLimit && this.gateway.sessionStartLimit.remaining === 0) {
+      await wait(this.gateway.sessionStartLimit.resetAfter.getTime() - Date.now());
     }
 
     await this.send(OP.IDENTIFY, Object.assign({
-      token: this.token,
+      token: this.gateway.token,
       properties: {
         $os: os.platform(),
         $browser: 'spectacles',
@@ -124,10 +75,12 @@ export default class Shard extends EventEmitter implements Shardable {
       },
       compress: false,
       large_threshold: 250,
-      shard: [this.id, gateway.shards],
+      shard: [this.id, this.gateway.shards],
       presence: {},
     }, packet));
   }, 1, 5e3);
+
+  public gateway: Gateway;
 
   /**
    * The API version to use.
@@ -182,16 +135,17 @@ export default class Shard extends EventEmitter implements Shardable {
 
   /**
    * @constructor
-   * @param {string} token The token to connect with
+   * @param {string|Gateway} gatewayOrToken The token to connect with, or the gateway information to use
    * @param {number} shard The shard of this connection
    */
-  constructor(public token: string, public readonly id: number) {
+  constructor(token: string | Gateway, public readonly id: number) {
     super();
 
     this.receive = this.receive.bind(this);
     this.handleClose = this.handleClose.bind(this);
     this.handleError = this.handleError.bind(this);
 
+    this.gateway = Gateway.fromToken(token);
     this.send = throttle(this.send.bind(this), 120, 60) as any; // ts complains about this for some reason
     this.identify = Shard.identify;
 
@@ -207,7 +161,7 @@ export default class Shard extends EventEmitter implements Shardable {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) await this.disconnect();
       this.emit('connect');
 
-      this.ws = new WebSocket(`${(await this.fetchGateway()).url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
+      this.ws = new WebSocket(`${this.gateway.url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
       this._registerWSListeners();
 
       this._acked = true;
@@ -252,7 +206,7 @@ export default class Shard extends EventEmitter implements Shardable {
     if (!this.session) throw new Error(Codes.NO_SESSION);
 
     return this.send(OP.RESUME, {
-      token: this.token,
+      token: this.gateway.token,
       seq: this.seq,
       session_id: this.session,
     });
@@ -363,10 +317,6 @@ export default class Shard extends EventEmitter implements Shardable {
 
     this.emit('send', data);
     return this._send(encode(data));
-  }
-
-  public fetchGateway(force?: boolean): Promise<Gateway> {
-    return Shard.fetchGateway(this.token, force);
   }
 
   private _send(data: Buffer): Promise<void> {
