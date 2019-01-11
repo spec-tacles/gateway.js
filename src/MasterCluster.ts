@@ -8,7 +8,7 @@ export default class ChildCluster extends EventEmitter {
 
   constructor(token: string) {
     super();
-    this.gateway = Gateway.fromToken(token);
+    this.gateway = Gateway.fetch(token);
   }
 
   public spawn(shards: Array<[number, number]>): void {

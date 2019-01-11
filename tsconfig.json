@@ -5,9 +5,10 @@
     "moduleResolution": "node",
     "target": "es2017",
     "lib": [
-      "es2017"
+      "es2017",
+      "dom"
     ],
-    "declaration": true,
+    "outDir": "dist",
     "sourceMap": true,
     "removeComments": false
   },

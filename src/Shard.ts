@@ -1,27 +1,15 @@
-import * as WebSocket from 'ws';
-import * as https from 'https';
-import * as os from 'os';
 import pako = require('pako');
 import throttle from 'p-throttle';
-import { promisify } from 'util';
-import { Constants, Errors, encoding, encode, decode } from '@spectacles/util';
-import { Presence } from '@spectacles/types';
+import { Errors, encoding, encode, decode } from '@spectacles/util';
+import { Dispatch, OP, Presence } from '@spectacles/types';
 
 import Gateway from './Gateway';
-import CloseEvent from './util/CloseEvent';
+import WebSocket from './util/WebSocket';
+import zlib from './util/zlib';
 import { EventEmitter } from 'events';
-
-let zlib: typeof pako;
-try {
-  zlib = require('zlib-sync');
-} catch {
-  zlib = pako;
-}
-
-const { version, repository } = require('../../package.json');
-const { OP, Dispatch } = Constants;
 const { Codes, Error } = Errors;
-const wait = promisify(setTimeout);
+
+export const wait = (time: number) => new Promise<void>(r => setTimeout(r, time));
 
 export type Identify = {
   token: string,
@@ -59,27 +47,6 @@ export type Payload = {
 export default class Shard extends EventEmitter {
   public static readonly ZLIB_SUFFIX = new Uint8Array([0x00, 0x00, 0xff, 0xff]);
 
-  public static identify = throttle(async function (this: Shard, packet: Partial<Identify> = {}) {
-    if (this.session) return this.resume();
-
-    if (this.gateway.sessionStartLimit && this.gateway.sessionStartLimit.remaining === 0) {
-      await wait(this.gateway.sessionStartLimit.resetAfter.getTime() - Date.now());
-    }
-
-    await this.send(OP.IDENTIFY, Object.assign({
-      token: this.gateway.token,
-      properties: {
-        $os: os.platform(),
-        $browser: 'spectacles',
-        $device: 'spectacles',
-      },
-      compress: false,
-      large_threshold: 250,
-      shard: [this.id, this.gateway.shards],
-      presence: {},
-    }, packet));
-  }, 1, 5e3);
-
   public gateway: Gateway;
 
   /**
@@ -94,7 +61,7 @@ export default class Shard extends EventEmitter {
    * Send an identify packet. Will attempt to resume if a session is available.
    * @returns {Promise<undefined>}
    */
-  public identify: (pk?: Partial<Identify>) => Promise<void>;
+  public identify: (pk?: Partial<Identify>) => Promise<void> = this.gateway.identify.bind(this.gateway, this);
 
   /**
    * The sequence of this connection.
@@ -141,13 +108,9 @@ export default class Shard extends EventEmitter {
   constructor(token: string | Gateway, public readonly id: number) {
     super();
 
-    this.receive = this.receive.bind(this);
-    this.handleClose = this.handleClose.bind(this);
-    this.handleError = this.handleError.bind(this);
-
-    this.gateway = Gateway.fromToken(token);
+    this._registerWSListeners();
+    this.gateway = Gateway.fetch(token);
     this.send = throttle(this.send.bind(this), 120, 60) as any; // ts complains about this for some reason
-    this.identify = Shard.identify;
 
     this.connect();
   }
@@ -165,7 +128,7 @@ export default class Shard extends EventEmitter {
       this._registerWSListeners();
 
       this._acked = true;
-      this.ws.once('open', r);
+      this.once('open', r);
     };
 
     return new Promise(r => setImmediate(connect, r));
@@ -182,7 +145,7 @@ export default class Shard extends EventEmitter {
     this._reset();
 
     this.ws.close(code);
-    await new Promise(r => this.ws.once('close', r));
+    await new Promise(r => this.once('close', r));
   }
 
   /**
@@ -202,7 +165,7 @@ export default class Shard extends EventEmitter {
    * @returns {Promise<undefined>}
    * @throws {Error} Throws if there's no session available to resume.
    */
-  public resume(): Promise<void> {
+  public resume(): void {
     if (!this.session) throw new Error(Codes.NO_SESSION);
 
     return this.send(OP.RESUME, {
@@ -216,7 +179,7 @@ export default class Shard extends EventEmitter {
    * Send a heartbeat to the gateway.
    * @returns {Promise<undefined>}
    */
-  public heartbeat(): Promise<void> {
+  public heartbeat(): void {
     return this.send(OP.HEARTBEAT, this.seq);
   }
 
@@ -225,15 +188,21 @@ export default class Shard extends EventEmitter {
    * @param {WebSocket.Data} data The data to receive
    * @returns {undefined}
    */
-  public receive(data: WebSocket.Data): void {
-    let conv: Uint8Array;
-    if (typeof data === 'string') conv = new Uint8Array(Buffer.from(data));
-    else if (Array.isArray(data)) conv = new Uint8Array(Buffer.concat(data));
-    else conv = new Uint8Array(data);
+  public receive = ({ data }: MessageEvent): void => {
+    let conv: Uint8Array | string;
+    if (Array.isArray(data)) conv = new Uint8Array(Buffer.concat(data));
+    else if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) conv = new Uint8Array(data);
+    else conv = data;
 
-    const flush = conv
-      .slice(conv.length - 4, conv.length)
-      .every((e, i) => e === Shard.ZLIB_SUFFIX[i]);
+    const suffix = conv.slice(conv.length - 4, conv.length);
+    let flush = true;
+    for (let i = 0; i < suffix.length; i++) {
+      if (suffix[i] !== Shard.ZLIB_SUFFIX[i]) {
+        flush = false;
+        break;
+      }
+    }
+
     this.inflate.push(conv, flush ? (zlib as any).Z_SYNC_FLUSH : (zlib as any).Z_NO_FLUSH);
     if (!flush) return;
 
@@ -285,13 +254,13 @@ export default class Shard extends EventEmitter {
    * @param {?string} t The event to send; use when sending an OP 0.
    * @returns {Promise<undefined>}
    */
-  public send(pk: Buffer): Promise<void>;
-  public send(pk: Payload): Promise<void>;
-  public send(op: number | string, d: any): Promise<void>;
-  public send(op: number | Buffer | Payload | string, d?: any): Promise<void> {
-    if (Buffer.isBuffer(op)) {
+  public send(pk: Buffer | Blob): void;
+  public send(pk: Payload): void;
+  public send(op: number | string, d: any): void;
+  public send(op: number | Buffer | Blob | Payload | string, d?: any): void {
+    if (Buffer.isBuffer(op) || (typeof Blob !== 'undefined' && op instanceof Blob)) {
       this.emit('send', op);
-      return this._send(op);
+      return this.ws.send(op);
     }
 
     let data: Payload;
@@ -312,20 +281,15 @@ export default class Shard extends EventEmitter {
         data = { op, d } as Payload;
         break;
       default:
-        return Promise.reject(new global.Error(`Invalid op type "${typeof op}"`))
+        throw new global.Error(`Invalid op type "${typeof op}"`);
     }
 
     this.emit('send', data);
-    return this._send(encode(data));
+    return this.ws.send(encode(data));
   }
 
-  private _send(data: Buffer): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws.send(data, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+  private handleOpen = (event: Event): void => { // arrow function for "this" context
+    this.emit('open', event);
   }
 
   /**
@@ -335,18 +299,19 @@ export default class Shard extends EventEmitter {
    * @returns {Promise<undefined>}
    * @private
    */
-  private async handleClose(code: number, reason: string): Promise<void> {
-    this.emit('close', new CloseEvent(code, reason));
+  private handleClose = (event: CloseEvent): void => { // arrow function for "this" context
+    this.emit('close', event);
     this._reset();
 
-    switch (code) {
+    switch (event.code) {
       case 4004:
       case 4010:
       case 4011: // unrecoverable errors (disconnect)
+        this.emit('exit', event);
         return;
     }
 
-    await this.reconnect();
+    this.reconnect();
   }
 
   /**
@@ -355,15 +320,16 @@ export default class Shard extends EventEmitter {
    * @returns {Promise<undefined>}
    * @private
    */
-  private async handleError(err: any) {
+  private handleError = (err: Event) => { // arrow function for "this" context
     this.emit('error', err);
-    await this.reconnect();
+    this.reconnect();
   }
 
   private _registerWSListeners() {
-    if (!this.ws.listeners('message').includes(this.receive)) this.ws.on('message', this.receive);
-    if (!this.ws.listeners('close').includes(this.handleClose)) this.ws.on('close', this.handleClose);
-    if (!this.ws.listeners('error').includes(this.handleError)) this.ws.on('error', this.handleError);
+    this.ws.onmessage = this.receive;
+    this.ws.onerror = this.handleError;
+    this.ws.onclose = this.handleClose;
+    this.ws.onopen = this.handleOpen;
   }
 
   private _reset() {
@@ -373,9 +339,10 @@ export default class Shard extends EventEmitter {
   }
 
   private _clearWSListeners() {
-    this.ws.removeListener('message', this.receive);
-    this.ws.removeListener('close', this.handleClose);
-    this.ws.removeListener('error', this.handleError);
+    this.ws.onmessage = null;
+    this.ws.onclose = null;
+    this.ws.onerror = null;
+    this.ws.onopen = null;
   }
 
   private _clearHeartbeater() {

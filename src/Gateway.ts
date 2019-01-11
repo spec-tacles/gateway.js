@@ -1,5 +1,9 @@
-import https = require('https');
-const { version, repository } = require('../../package.json');
+import { platform } from 'os';
+import { OP } from '@spectacles/types';
+import Shard, { Identify, wait } from './Shard';
+import pThrottle from 'p-throttle';
+import HttpError from './util/HttpError';
+const { version, repository } = require('../package.json');
 
 export interface GatewayData {
   url: string;
@@ -12,8 +16,16 @@ export interface GatewayData {
 }
 
 export default class Gateway {
-  public static fromToken(gatewayOrToken: string | Gateway): Gateway {
-    return typeof gatewayOrToken === 'string' ? new this(gatewayOrToken) : gatewayOrToken;
+  public static tokens: Map<string, Gateway> = new Map();
+
+  public static fetch(gatewayOrToken: string | Gateway): Gateway {
+    if (typeof gatewayOrToken === 'string') {
+      const existing = this.tokens.get(gatewayOrToken);
+      if (existing) return existing;
+      return new this(gatewayOrToken);
+    }
+
+    return gatewayOrToken;
   }
 
   public shards: number;
@@ -27,6 +39,8 @@ export default class Gateway {
       configurable: true,
       value: token,
     });
+
+    this.identify = pThrottle(this.identify, 1, 5e3);
   }
 
   public get url(): string {
@@ -41,38 +55,42 @@ export default class Gateway {
     } : null;
   }
 
-  public fetch(force = false): Promise<this> {
+  public async identify(shard: Shard, packet?: Partial<Identify>): Promise<void> {
+    if (shard.session) return shard.resume();
+
+    if (this.sessionStartLimit && this.sessionStartLimit.remaining === 0) {
+      await wait(this.sessionStartLimit.resetAfter.getTime() - Date.now());
+    }
+
+    return shard.send(OP.IDENTIFY, Object.assign({
+      token: this.token,
+      properties: {
+        $os: platform(),
+        $browser: 'spectacles',
+        $device: 'spectacles',
+      },
+      compress: false,
+      large_threshold: 250,
+      shard: [shard.id, this.shards],
+      presence: {},
+    }, packet));
+  }
+
+  public async fetch(force = false): Promise<this> {
     if (!force) return Promise.resolve(this);
 
-    return new Promise<this>((resolve, reject) => {
-      https.get({
-        host: 'discordapp.com',
-        path: '/api/v6/gateway/bot',
-        headers: {
-          Authorization: `Bot ${this.token}`,
-          Accept: 'application/json',
-          'User-Agent': `DiscordBot (${repository.url}, ${version})`,
-        },
-      }, (res) => {
-        if (res.statusCode !== 200) return reject(res);
-
-        let data = '';
-        res
-          .setEncoding('utf8')
-          .on('data', chunk => data += chunk)
-          .once('end', () => {
-            res.removeAllListeners();
-
-            try {
-              this._data = JSON.parse(data)
-              if (this.shards <= 0) this.shards = this._data!.shards;
-              return resolve(this);
-            } catch (e) {
-              return reject(e);
-            }
-          })
-          .once('error', reject);
-      });
+    const res = await fetch('https://discordapp.com/api/v6/gateway/bot', {
+      headers: {
+        Authorization: `Bot ${this.token}`,
+        Accept: 'application/json',
+        'User-Agent': `DiscordBot (${repository.url}, ${version})`,
+      },
     });
+
+    if (!res.ok) throw new HttpError(res.status, res.statusText);
+
+    this._data = await res.json();
+    if (this.shards <= 0) this.shards = this._data!.shards;
+    return this;
   }
 }

@@ -36,7 +36,7 @@ export default class Cluster extends EventEmitter {
    */
   constructor(token: string | Gateway) {
     super();
-    this.gateway = Gateway.fromToken(token);
+    this.gateway = Gateway.fetch(token);
   }
 
   /**
@@ -59,7 +59,7 @@ export default class Cluster extends EventEmitter {
     } else if (max !== undefined) {
       // range of shard IDs provided
       if (max > this.gateway.shards) max = this.gateway.shards;
-      for (; minOrIDs < max; minOrIDs++) this.spawn(minOrIDs);
+      for (; minOrIDs <= max; minOrIDs++) this.spawn(minOrIDs);
     } else {
       // single shard ID provided
       const existing = this.shards.get(minOrIDs);
