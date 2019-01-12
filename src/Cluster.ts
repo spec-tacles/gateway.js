@@ -55,13 +55,13 @@ export default class Cluster extends EventEmitter {
 
     if (typeof minOrIDs === 'undefined') {
       // no parameters provided
-      this.spawn(0, this.gateway.shards);
+      this.spawn(0, Infinity);
     } else if (Array.isArray(minOrIDs)) {
       // array of shard IDs provided
       minOrIDs.map(id => this.spawn(id));
     } else if (max !== undefined) {
       // range of shard IDs provided
-      if (max > this.gateway.shards) max = this.gateway.shards;
+      if (max > this.gateway.shards) max = this.gateway.shards - 1;
       for (; minOrIDs <= max; minOrIDs++) this.spawn(minOrIDs);
     } else {
       // single shard ID provided
