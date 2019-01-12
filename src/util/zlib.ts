@@ -8,6 +8,7 @@ if (typeof window === 'undefined') {
   } catch {}
 }
 
-if (typeof window !== 'undefined' || !ZlibSync) zlib = require('pako');
+if (ZlibSync) zlib = ZlibSync;
+else zlib = require('pako');
 
-export default zlib!;
+export default zlib;

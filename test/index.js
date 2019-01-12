@@ -10,3 +10,7 @@ client.on('disconnect', console.log.bind(null, 'disconnect'));
 client.on('send', console.log.bind(null, 'send'));
 client.on('receive', (pk) => console.log('receive', inspect(pk, { depth: 1 })));
 client.on('error', console.log);
+
+(async () => {
+  await client.connect();
+})();

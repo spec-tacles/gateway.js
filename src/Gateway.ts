@@ -1,7 +1,9 @@
+import fetch from 'node-fetch';
+import pThrottle from 'p-throttle';
 import { platform } from 'os';
 import { OP } from '@spectacles/types';
+import { Errors } from '@spectacles/util';
 import Shard, { Identify, wait } from './Shard';
-import pThrottle from 'p-throttle';
 import HttpError from './util/HttpError';
 const { version, repository } = require('../package.json');
 
@@ -28,12 +30,12 @@ export default class Gateway {
     return gatewayOrToken;
   }
 
-  public shards: number;
   public token!: string;
   protected _data?: GatewayData;
+  protected _shards?: number;
 
   constructor(token: string, shards: number = 0) {
-    this.shards = shards;
+    this._shards = shards;
     Object.defineProperty(this, 'token', {
       writable: true,
       configurable: true,
@@ -43,8 +45,18 @@ export default class Gateway {
     this.identify = pThrottle(this.identify, 1, 5e3);
   }
 
+  public get shards(): number {
+    if (!this._shards) throw new Errors.Error(Errors.Codes.NO_GATEWAY);
+    return this._shards;
+  }
+
+  public set shards(count: number) {
+    this._shards = count;
+  }
+
   public get url(): string {
-    return this._data ? this._data.url : '';
+    if (!this._data) throw new Errors.Error(Errors.Codes.NO_GATEWAY);
+    return this._data.url;
   }
 
   public get sessionStartLimit(): null | { total: number, remaining: number, resetAfter: Date } {
@@ -77,7 +89,7 @@ export default class Gateway {
   }
 
   public async fetch(force = false): Promise<this> {
-    if (!force) return Promise.resolve(this);
+    if (!force && this._data) return Promise.resolve(this);
 
     const res = await fetch('https://discordapp.com/api/v6/gateway/bot', {
       headers: {
@@ -90,7 +102,7 @@ export default class Gateway {
     if (!res.ok) throw new HttpError(res.status, res.statusText);
 
     this._data = await res.json();
-    if (this.shards <= 0) this.shards = this._data!.shards;
+    if (!this._shards || this._shards <= 0) this._shards = this._data!.shards;
     return this;
   }
 }

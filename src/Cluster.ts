@@ -1,5 +1,6 @@
-import ClusterableShard from './ClusterableShard';
 import { EventEmitter } from 'events';
+import { Errors } from '@spectacles/util';
+import ClusterableShard from './ClusterableShard';
 import Gateway from './Gateway';
 
 /**
@@ -45,11 +46,13 @@ export default class Cluster extends EventEmitter {
    * @param {?number} [max] The highest shard ID to spawn, limited to the shard count
    * from Shard.fetchGateway; if not provided, minOrIDs will be taken as a single shard ID
    */
-  public spawn(): void;
-  public spawn(id: number): void;
-  public spawn(ids: number[]): void;
-  public spawn(min: number, max: number): void;
-  public spawn(minOrIDs?: number | number[], max?: number): void {
+  public spawn(): Promise<void>;
+  public spawn(id: number): Promise<void>;
+  public spawn(ids: number[]): Promise<void>;
+  public spawn(min: number, max: number): Promise<void>;
+  public async spawn(minOrIDs?: number | number[], max?: number): Promise<void> {
+    await this.gateway.fetch();
+
     if (typeof minOrIDs === 'undefined') {
       // no parameters provided
       this.spawn(0, this.gateway.shards);

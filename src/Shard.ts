@@ -7,7 +7,12 @@ import Gateway from './Gateway';
 import WebSocket from './util/WebSocket';
 import zlib from './util/zlib';
 import { EventEmitter } from 'events';
-const { Codes, Error } = Errors;
+
+const { Codes, Error: SpectaclesError } = Errors;
+const isBlob = (v: unknown): v is Blob => {
+  if (typeof Blob === 'undefined') return false;
+  return v instanceof Blob;
+};
 
 export const wait = (time: number) => new Promise<void>(r => setTimeout(r, time));
 
@@ -61,20 +66,18 @@ export default class Shard extends EventEmitter {
    * Send an identify packet. Will attempt to resume if a session is available.
    * @returns {Promise<undefined>}
    */
-  public identify: (pk?: Partial<Identify>) => Promise<void> = this.gateway.identify.bind(this.gateway, this);
+  public identify: (pk?: Partial<Identify>) => Promise<void>;
 
   /**
    * The sequence of this connection.
    * @type {number}
-   * @default [-1]
-   * @private
+   * @default [0]
    */
   public seq: number = 0;
 
   /**
    * The session identifier of this connection.
    * @type {?string}
-   * @private
    */
   public session: string | null = null;
 
@@ -84,6 +87,10 @@ export default class Shard extends EventEmitter {
    */
   public ws!: WebSocket;
 
+  /**
+   * The zlib inflate context to use for this connection.
+   * @type {pako.Inflate}
+   */
   public inflate: pako.Inflate = new zlib.Inflate();
 
   /**
@@ -102,71 +109,63 @@ export default class Shard extends EventEmitter {
 
   /**
    * @constructor
-   * @param {string|Gateway} gatewayOrToken The token to connect with, or the gateway information to use
+   * @param {string|Gateway} token The token to connect with, or the gateway information to use
    * @param {number} shard The shard of this connection
    */
   constructor(token: string | Gateway, public readonly id: number) {
     super();
 
-    this._registerWSListeners();
     this.gateway = Gateway.fetch(token);
+    this.identify = this.gateway.identify.bind(this.gateway, this);
     this.send = throttle(this.send.bind(this), 120, 60) as any; // ts complains about this for some reason
-
-    this.connect();
   }
 
   /**
    * Connect to the gateway.
    * @returns {Promise<undefined>}
    */
-  public connect(): Promise<void> {
-    const connect = async (r: () => void) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) await this.disconnect();
-      this.emit('connect');
+  public async connect(): Promise<void> {
+    await this.gateway.fetch();
+    this.emit('connect');
 
-      this.ws = new WebSocket(`${this.gateway.url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
-      this._registerWSListeners();
-
-      this._acked = true;
-      this.once('open', r);
-    };
-
-    return new Promise(r => setImmediate(connect, r));
+    this.ws = new WebSocket(`${this.gateway.url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
+    this._registerWSListeners();
+    this._acked = true;
   }
 
   /**
    * Disconnect from the gateway.
-   * @param {?number} code The code to close the connection with, if any.
-   * @returns {Promise<undefined>}
+   * @param {?number} code The code to close the connection with
+   * @param {?string} reason The reason to disconnect with
+   * @returns {undefined}
    */
-  public async disconnect(code?: number): Promise<void> {
-    if ([WebSocket.CLOSED, WebSocket.CLOSING].includes(this.ws.readyState)) return Promise.resolve();
+  public disconnect(code?: number, reason?: string): void {
+    if ([WebSocket.CLOSED, WebSocket.CLOSING].includes(this.ws.readyState)) return;
     this.emit('disconnect');
     this._reset();
 
-    this.ws.close(code);
-    await new Promise(r => this.once('close', r));
+    this.ws.close(code, reason);
   }
 
   /**
    * Disconnect and reconnect to the gateway after a 1s timeout.
-   * @param {?number} code The code to close the connection with, if any.
+   * @param {?number} code The code to close the connection with
    * @param {?number} delay The time (in ms) to delay between disconnect and connect
    * @returns {Promise<undefined>}
    */
   public async reconnect(code?: number, delay: number = 1e3 + Math.random() - 0.5): Promise<void> {
-    await this.disconnect(code);
+    this.disconnect(code);
     await wait(delay);
-    await this.connect();
+    this.connect();
   }
 
   /**
    * Resume your session with the gateway.
    * @returns {Promise<undefined>}
-   * @throws {Error} Throws if there's no session available to resume.
+   * @throws {SpectaclesError} Throws if there's no session available to resume
    */
   public resume(): void {
-    if (!this.session) throw new Error(Codes.NO_SESSION);
+    if (!this.session) throw new SpectaclesError(Codes.NO_SESSION);
 
     return this.send(OP.RESUME, {
       token: this.gateway.token,
@@ -177,7 +176,7 @@ export default class Shard extends EventEmitter {
 
   /**
    * Send a heartbeat to the gateway.
-   * @returns {Promise<undefined>}
+   * @returns {undefined}
    */
   public heartbeat(): void {
     return this.send(OP.HEARTBEAT, this.seq);
@@ -188,7 +187,7 @@ export default class Shard extends EventEmitter {
    * @param {WebSocket.Data} data The data to receive
    * @returns {undefined}
    */
-  public receive = ({ data }: MessageEvent): void => {
+  public receive = ({ data }: MessageEvent): void => { // arrow function for "this" context
     let conv: Uint8Array | string;
     if (Array.isArray(data)) conv = new Uint8Array(Buffer.concat(data));
     else if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) conv = new Uint8Array(data);
@@ -211,12 +210,15 @@ export default class Shard extends EventEmitter {
 
     const decoded: Payload = decode(result);
     this.emit('receive', decoded);
+    this.handlePayload(decoded);
+  }
 
-    switch (decoded.op) {
+  private handlePayload(payload: Payload) {
+    switch (payload.op) {
       case OP.DISPATCH:
-        if (decoded.s && decoded.s > this.seq) this.seq = decoded.s;
-        if (decoded.t === Dispatch.READY) this.session = decoded.d.session_id;
-        if (decoded.t) this.emit(decoded.t, decoded.d);
+        if (payload.s && payload.s > this.seq) this.seq = payload.s;
+        if (payload.t === Dispatch.READY) this.session = payload.d.session_id;
+        if (payload.t) this.emit(payload.t, payload.d);
         break;
       case OP.HEARTBEAT:
         this.heartbeat();
@@ -225,7 +227,7 @@ export default class Shard extends EventEmitter {
         this.reconnect();
         break;
       case OP.INVALID_SESSION:
-        if (!decoded.d) this.session = null;
+        if (!payload.d) this.session = null;
         wait(Math.floor(Math.random() * 5) + 1).then(() => this.identify());
         break;
       case OP.HELLO:
@@ -237,7 +239,7 @@ export default class Shard extends EventEmitter {
           } else {
             this.reconnect(4009);
           }
-        }, decoded.d.heartbeat_interval);
+        }, payload.d.heartbeat_interval);
 
         this.identify();
         break;
@@ -248,17 +250,27 @@ export default class Shard extends EventEmitter {
   }
 
   /**
-   * Send data through the websocket connection.
-   * @param {number} op The OP to send
-   * @param {*} d The data to send
-   * @param {?string} t The event to send; use when sending an OP 0.
-   * @returns {Promise<undefined>}
+   * Send data through the websocket connection. Valid string and number values for `op` parameter
+   * are documented on the
+   * [Discord API documentation](https://discordapp.com/developers/docs/topics/opcodes-and-status-codes#gateway-gateway-opcodes)
+   * of Gateway Op codes.
+   * @param {number | Buffer | Blob | ArrayBuffer | Payload | string} op The Op code, payload, T, or the encoded packet to send
+   * @param {*} d The data to send if `op` is a number (Op code) or string (T)
+   * @returns {undefined}
+   * @example
+   * gateway.send(Buffer.from(JSON.stringify({ op: 1, d: gateway.seq })));
+   * @example
+   * gateway.send({ op: 1, d: gateway.seq });
+   * @example
+   * gateway.send(4, { guild_id: 'some guild', channel_id: 'some channel', self_mute: false, self_deaf: false });
+   * @example
+   * gateway.send('REQUEST_GUILD_MEMBERS', { guild_id: 'some guild', query: 'foo', limit: 10 });
    */
-  public send(pk: Buffer | Blob): void;
-  public send(pk: Payload): void;
-  public send(op: number | string, d: any): void;
-  public send(op: number | Buffer | Blob | Payload | string, d?: any): void {
-    if (Buffer.isBuffer(op) || (typeof Blob !== 'undefined' && op instanceof Blob)) {
+  public send(pk: Buffer | Blob | ArrayBuffer | Payload): void;
+  public send(op: OP | keyof typeof OP, d: any): void;
+  public send(op: OP | Buffer | Blob | ArrayBuffer | Payload | keyof typeof OP, d?: any): void;
+  public send(op: OP | Buffer | Blob | ArrayBuffer | Payload | keyof typeof OP, d?: any): void {
+    if (Buffer.isBuffer(op) || isBlob(op) || op instanceof ArrayBuffer) {
       this.emit('send', op);
       return this.ws.send(op);
     }
@@ -266,22 +278,15 @@ export default class Shard extends EventEmitter {
     let data: Payload;
     switch (typeof op) {
       case 'object':
-        data = op as Payload;
+        data = op;
         break;
-      case 'string': {
-        data = {
-          op: OP.DISPATCH,
-          t: op as string,
-          s: this.seq,
-          d,
-        };
-        break;
-      }
+      case 'string':
+        op = OP[op]; // intentional fallthrough
       case 'number':
-        data = { op, d } as Payload;
+        data = { op, d };
         break;
       default:
-        throw new global.Error(`Invalid op type "${typeof op}"`);
+        throw new Error(`Invalid op type "${typeof op}"`);
     }
 
     this.emit('send', data);
@@ -294,8 +299,7 @@ export default class Shard extends EventEmitter {
 
   /**
    * Handle the close of this connection.
-   * @param {number} code The code the connection closed with
-   * @param {string} reason The reason the connection closed
+   * @param {CloseEvent} event The close event of the closure
    * @returns {Promise<undefined>}
    * @private
    */
@@ -317,10 +321,10 @@ export default class Shard extends EventEmitter {
   /**
    * Handle an error with this connection.
    * @param {*} err The error that occurred
-   * @returns {Promise<undefined>}
+   * @returns {undefined}
    * @private
    */
-  private handleError = (err: Event) => { // arrow function for "this" context
+  private handleError = (err: Event): void => { // arrow function for "this" context
     this.emit('error', err);
     this.reconnect();
   }
