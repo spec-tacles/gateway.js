@@ -20,11 +20,11 @@ export interface GatewayData {
 export default class Gateway {
   public static tokens: Map<string, Gateway> = new Map();
 
-  public static fetch(gatewayOrToken: string | Gateway): Gateway {
+  public static fetch(gatewayOrToken: string | Gateway, shardCount?: number): Gateway {
     if (typeof gatewayOrToken === 'string') {
       const existing = this.tokens.get(gatewayOrToken);
       if (existing) return existing;
-      return new this(gatewayOrToken);
+      return new this(gatewayOrToken, shardCount);
     }
 
     return gatewayOrToken;
