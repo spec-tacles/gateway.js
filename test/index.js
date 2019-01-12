@@ -12,5 +12,5 @@ client.on('receive', (pk) => console.log('receive', inspect(pk, { depth: 1 })));
 client.on('error', console.log);
 
 (async () => {
-  await client.connect();
+  setTimeout(() => client.reconnect(1012), 10e3);
 })();

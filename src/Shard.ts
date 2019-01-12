@@ -8,6 +8,14 @@ import WebSocket from './util/WebSocket';
 import zlib from './util/zlib';
 import { EventEmitter } from 'events';
 
+declare module 'pako' {
+  export const Z_NO_FLUSH = 0;
+  export const Z_PARTIAL_FLUSH = 1;
+  export const Z_SYNC_FLUSH = 2;
+  export const Z_FULL_FLUSH = 3;
+  export const Z_FINISH = 4;
+}
+
 const { Codes, Error: SpectaclesError } = Errors;
 const isBlob = (v: unknown): v is Blob => {
   if (typeof Blob === 'undefined') return false;
@@ -61,6 +69,12 @@ export default class Shard extends EventEmitter {
    * @readonly
    */
   public readonly version: number = 6;
+
+  /**
+   * The current reconnect backoff timeout.
+   * @type {number}
+   */
+  public backoff: number = 1e3;
 
   /**
    * Send an identify packet. Will attempt to resume if a session is available.
@@ -118,6 +132,8 @@ export default class Shard extends EventEmitter {
     this.gateway = Gateway.fetch(token);
     this.identify = this.gateway.identify.bind(this.gateway, this);
     this.send = throttle(this.send.bind(this), 120, 60) as any; // ts complains about this for some reason
+
+    this.connect().catch(e => this.emit('error', e));
   }
 
   /**
@@ -125,6 +141,16 @@ export default class Shard extends EventEmitter {
    * @returns {Promise<undefined>}
    */
   public async connect(): Promise<void> {
+    if (this.ws) {
+      switch (this.ws.readyState) {
+        case WebSocket.CONNECTING:
+        case WebSocket.CLOSING:
+          return;
+        case WebSocket.OPEN:
+          this.disconnect();
+      }
+    }
+
     await this.gateway.fetch();
     this.emit('connect');
 
@@ -153,9 +179,9 @@ export default class Shard extends EventEmitter {
    * @param {?number} delay The time (in ms) to delay between disconnect and connect
    * @returns {Promise<undefined>}
    */
-  public async reconnect(code?: number, delay: number = 1e3 + Math.random() - 0.5): Promise<void> {
+  public async reconnect(code?: number): Promise<void> {
     this.disconnect(code);
-    await wait(delay);
+    await wait(this.backoff);
     this.connect();
   }
 
@@ -202,7 +228,7 @@ export default class Shard extends EventEmitter {
       }
     }
 
-    this.inflate.push(conv, flush ? (zlib as any).Z_SYNC_FLUSH : (zlib as any).Z_NO_FLUSH);
+    this.inflate.push(conv, flush ? zlib.Z_SYNC_FLUSH : zlib.Z_NO_FLUSH);
     if (!flush) return;
 
     let result: string | number[] | Uint8Array = this.inflate.result;
@@ -228,7 +254,7 @@ export default class Shard extends EventEmitter {
         break;
       case OP.INVALID_SESSION:
         if (!payload.d) this.session = null;
-        wait(Math.floor(Math.random() * 5) + 1).then(() => this.identify());
+        wait(Math.random() * 5 + 1).then(() => this.identify());
         break;
       case OP.HELLO:
         this._clearHeartbeater();
@@ -294,13 +320,14 @@ export default class Shard extends EventEmitter {
   }
 
   private handleOpen = (event: Event): void => { // arrow function for "this" context
+    this.backoff = 1e3;
     this.emit('open', event);
   }
 
   /**
    * Handle the close of this connection.
    * @param {CloseEvent} event The close event of the closure
-   * @returns {Promise<undefined>}
+   * @returns {undefined}
    * @private
    */
   private handleClose = (event: CloseEvent): void => { // arrow function for "this" context
@@ -326,6 +353,7 @@ export default class Shard extends EventEmitter {
    */
   private handleError = (err: Event): void => { // arrow function for "this" context
     this.emit('error', err);
+    this.backoff *= 2;
     this.reconnect();
   }
 
@@ -339,6 +367,7 @@ export default class Shard extends EventEmitter {
   private _reset() {
     this._clearWSListeners();
     this._clearHeartbeater();
+    this.inflate = new zlib.Inflate();
     this.seq = 0;
   }
 
