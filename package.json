@@ -1,6 +1,6 @@
 {
   "name": "@spectacles/gateway",
-  "version": "0.12.0-alpha.1",
+  "version": "0.12.0",
   "description": "The gateway to Discord.",
   "bin": "bin/index.js",
   "main": "dist/index.js",
