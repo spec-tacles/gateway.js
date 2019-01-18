@@ -13,6 +13,8 @@
     "removeComments": false
   },
   "include": [
-    "./src/"
+    "./bin",
+    "./src/",
+    "./test/"
   ]
 }

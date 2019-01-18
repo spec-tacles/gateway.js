@@ -5,7 +5,7 @@ import { OP } from '@spectacles/types';
 import { Errors } from '@spectacles/util';
 import Shard, { Identify, wait } from './Shard';
 import HttpError from './util/HttpError';
-const { version, repository } = require('../package.json');
+const { version, repository } = require('../../package.json'); // need to move 2 directories up to resolve from dist/
 
 export interface GatewayData {
   url: string;

@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-const { Gateway } = require('../dist');
+import * as yargs from 'yargs';
+import Gateway from '../src/Gateway';
+import cluster from './cluster';
+import shard from './shard';
 
-require('yargs')
+yargs
 	.env('DISCORD')
 	.option('config', {
 		'config': true,
@@ -35,13 +38,13 @@ require('yargs')
 	.option('events', {
 		'description': 'Shard events to listen to',
 		'type': 'array',
-		'default': 'close,error,open,receive',
+		'default': ['close', 'error', 'open', 'receive'],
 		'global': true,
 	})
 	.middleware(argv => {
-		if (argv.total) argv.token.shards = argv.total;
+		if (argv.total) (argv.token as unknown as Gateway).shards = argv.total;
 	})
-	.command(require('./cluster'))
-	.command(require('./shard'))
+	.command(cluster)
+	.command(shard)
 	.help()
 	.argv;

@@ -1,5 +1,5 @@
-const { Cluster } = require('../dist');
-const { inspect } = require('util');
+import { Cluster } from '../src';
+import { inspect } from 'util';
 
 if (typeof process.env.DISCORD_TOKEN !== 'string') throw new Error('no token');
 const client = new Cluster(process.env.DISCORD_TOKEN);

@@ -1,5 +1,5 @@
-const { Shard } = require('../dist');
-const { inspect } = require('util');
+import { Shard } from '../src';
+import { inspect } from 'util';
 
 if (typeof process.env.DISCORD_TOKEN !== 'string') throw new Error('no token');
 const client = new Shard(process.env.DISCORD_TOKEN, 0);

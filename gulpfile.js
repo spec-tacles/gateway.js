@@ -8,42 +8,42 @@ const webpackConfig = require('./webpack.config');
 const project = ts.createProject('tsconfig.json');
 
 async function clearBuild() {
-  await Promise.all([
-    fsn.emptydir('./dist'),
-    fsn.emptyDir('./typings'),
-  ]);
+	await Promise.all([
+		fsn.emptydir('./dist'),
+		fsn.emptyDir('./typings'),
+	]);
 }
 
 function buildBundle(cb) {
-  webpack(webpackConfig, (err, stats) => {
-    if (err) {
-      console.error(err);
-      return cb(err);
-    }
+	webpack(webpackConfig, (err, stats) => {
+		if (err) {
+			console.error(err);
+			return cb(err);
+		}
 
-    const info = stats.toJson();
-    if (stats.hasErrors()) {
-      console.error(info.errors);
-      cb(info.errors);
-    } else if (stats.hasWarnings()) {
-      console.warn(info.warnings);
-      cb(null, stats);
-    } else {
-      console.log(stats.toString({ colors: true }));
-      cb(null, stats);
-    }
-  });
+		const info = stats.toJson();
+		if (stats.hasErrors()) {
+			console.error(info.errors);
+			cb(info.errors);
+		} else if (stats.hasWarnings()) {
+			console.warn(info.warnings);
+			cb(null, stats);
+		} else {
+			console.log(stats.toString({ colors: true }));
+			cb(null, stats);
+		}
+	});
 }
 
 function buildProject() {
-  const result = project.src()
-    .pipe(sourcemaps.init())
-    .pipe(project());
+	const result = project.src()
+		.pipe(sourcemaps.init())
+		.pipe(project());
 
-  return merge(
-    result.dts.pipe(gulp.dest('typings')),
-    result.js.pipe(sourcemaps.write('.', { sourceRoot: '../src' })).pipe(gulp.dest('dist')),
-  );
+	return merge(
+		result.dts.pipe(gulp.dest('typings')),
+		result.js.pipe(sourcemaps.write('.', { sourceRoot: '../src' })).pipe(gulp.dest('dist')),
+	);
 }
 
 exports.bundle = buildBundle;
