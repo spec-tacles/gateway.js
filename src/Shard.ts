@@ -155,7 +155,10 @@ export default class Shard extends EventEmitter {
     this.emit('connect');
 
     this.ws = new WebSocket(`${this.gateway.url}?v=${this.version}&encoding=${encoding}&compress=zlib-stream`);
-    this._registerWSListeners();
+    this.ws.onmessage = this.receive;
+    this.ws.onerror = this.handleError;
+    this.ws.onclose = this.handleClose;
+    this.ws.onopen = this.handleOpen;
     this._acked = true;
   }
 
@@ -321,6 +324,7 @@ export default class Shard extends EventEmitter {
 
   private handleOpen = (event: Event): void => { // arrow function for "this" context
     this.backoff = 1e3;
+    this.inflate = new zlib.Inflate();
     this.emit('open', event);
   }
 
@@ -354,20 +358,12 @@ export default class Shard extends EventEmitter {
   private handleError = (err: Event): void => { // arrow function for "this" context
     this.emit('error', err);
     this.backoff *= 2;
-    this.reconnect();
-  }
-
-  private _registerWSListeners() {
-    this.ws.onmessage = this.receive;
-    this.ws.onerror = this.handleError;
-    this.ws.onclose = this.handleClose;
-    this.ws.onopen = this.handleOpen;
+    // close is always emitted with error, so reconnection is handled there
   }
 
   private _reset() {
     this._clearWSListeners();
     this._clearHeartbeater();
-    this.inflate = new zlib.Inflate();
     this.seq = 0;
   }
 

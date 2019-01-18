@@ -1,0 +1,6 @@
+{
+	"extends": ["eslint:recommended", "aqua/node"],
+	"rules": {
+		"comma-dangle": ["error", "always-multiline"]
+	}
+}
