@@ -8,6 +8,7 @@
       "es2017",
       "dom"
     ],
+    "declaration": true,
     "outDir": "dist",
     "sourceMap": true,
     "removeComments": false

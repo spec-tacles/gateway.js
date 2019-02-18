@@ -1,7 +1,12 @@
-src/
-test/
-node_modules/
-.vscode/
+/src/
+/test/
+/docs/
+/node_modules/
+/.vscode/
 .env
 gulpfile.js
 tsconfig.json
+jsdoc.json
+webpack.config.js
+*.tgz
+*.js.map
