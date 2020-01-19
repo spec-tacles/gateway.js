@@ -14,7 +14,7 @@ You've just spawned the recommended number of shards. If you want to use a custo
 
 ```js
 const { Cluster, Gateway } = require('@spectacles/gateway');
-const gateway = Gateway.from('token', 30);
+const gateway = new Gateway('token', 30);
 
 const cluster = new Cluster(gateway);
 ```
